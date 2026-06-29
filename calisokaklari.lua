@@ -1,11 +1,13 @@
--- Cali Sokaklari - Sadece Para ve Gerçek Tüm Item Hilesi (Minimal Menü)
+-- Cali Sokaklari - Sadece Para ve Gerçek Tüm Item Hilesi (Fixli Tam Menü)
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
-pcall(function() StarterGui:SetCore("SendNotification", {Title="Script"; Text="Cali Sokaklari Money/Item Hilesi Aktif!"; Duration=3;}) end)
+pcall(function() StarterGui:SetCore("SendNotification", {Title="Script"; Text="Cali Sokaklari Hile Menüsü Aktif!"; Duration=3;}) end)
+
+local LastStatus = ""
 
 local function roundify(gui, rad)
     local corner = Instance.new("UICorner")
@@ -18,74 +20,137 @@ local function destroyMenu()
     if gui then gui:Destroy() end
 end
 
--- Gerçek itemları bulmak için marketplace ve ReplicatedStorage taraması
-local function getTrueGameItemList()
-    local itemNames = {}
+local function getRealItemList()
+    local backpack = LocalPlayer:FindFirstChild("Backpack") or LocalPlayer.Backpack
+    local found = {}
+    local tested = {}
+    local containers = {}
+
     for _, folderName in ipairs({"Items", "Itemler", "Envanter", "Shop", "Market"}) do
-        local itemsFolder = ReplicatedStorage:FindFirstChild(folderName)
-        if itemsFolder and itemsFolder:IsA("Folder") then
-            for _, v in ipairs(itemsFolder:GetChildren()) do
-                if (v:IsA("Tool") or v:IsA("Model") or v:IsA("Folder")) and not itemNames[v.Name] then
-                    itemNames[v.Name] = true
-                end
+        local f = ReplicatedStorage:FindFirstChild(folderName)
+        if f and (f:IsA("Folder") or f:IsA("Model") or f:IsA("Configuration")) then
+            table.insert(containers, f)
+        end
+    end
+
+    local ids = {}
+    for _,container in ipairs(containers) do
+        for _,v in ipairs(container:GetDescendants()) do
+            if (v:IsA("Tool") or v:IsA("Model")) and not ids[v.Name] then
+                ids[v.Name]=true
+                table.insert(found, v.Name)
             end
         end
     end
-    -- Alternatif: Sık bilinen item adları (override eder)
-    local known = {
+
+    local common_items = {
         "Lockpick","Anahtar","Drill","Telefon","Canta","Mask","Bandaj","Armor",
         "Cigarette","Cekic","Tablet","Painkiller","EnergyDrink","Pistol","DesertEagle",
         "MP5","M4A1","AK47","Tec9","Sniper","Uzi","Shotgun","Knife"
     }
-    for _,v in ipairs(known) do itemNames[v]=true end
-    local out = {}
-    for k in pairs(itemNames) do table.insert(out, k) end
-    return out
+    for _,it in ipairs(common_items) do
+        if not ids[it] then
+            ids[it]=true
+            table.insert(found,it)
+        end
+    end
+
+    -- Envanterinizdeki itemleri ekle
+    if backpack then
+        for _,item in ipairs(backpack:GetChildren()) do
+            if (item:IsA("Tool") or item:IsA("Model")) and not ids[item.Name] then
+                ids[item.Name]=true
+                table.insert(found,item.Name)
+            end
+        end
+    end
+
+    return found
 end
 
-local function findRemote(keywords)
+local function findRemote(keywords, kind)
     local found = {}
     local function scan(obj)
         for _, v in ipairs(obj:GetDescendants()) do
+            if kind and not v:IsA(kind) then continue end
             for _, w in ipairs(keywords) do
-                if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) and v.Name:lower():find(w:lower()) then
-                    table.insert(found, v)
+                if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                    if v.Name:lower():find(w:lower()) then
+                        table.insert(found, v)
+                    end
                 end
             end
         end
     end
     pcall(function() scan(ReplicatedStorage) end)
-    pcall(function() scan(workspace) end)
     return found
 end
 
-local function realGiveMoney(amount)
-    local remotes = findRemote({"para","money","bakiye","give","add"})
-    for _, r in ipairs(remotes) do
-        -- Sadece parametre olarak sayı isteyenlere
-        local ok = pcall(function()
-            r:FireServer(amount)
-        end)
-        if ok then break end
+local function tryGiveMoney(amount)
+    local remotes = findRemote({"para", "money", "bakiye", "add", "ver"})
+    -- Deneme: remotelere farklı parametre kombinasyonlarını dener
+    local success = false
+    for _,remote in ipairs(remotes) do
+        for _,param in ipairs({amount, tostring(amount), {amount}, {tostring(amount)}, {LocalPlayer, amount}, {amount,LocalPlayer}}) do
+            if type(param)=="table" then
+                local ok = pcall(function() remote:FireServer(unpack(param)) end)
+                success = success or ok
+            else
+                local ok = pcall(function() remote:FireServer(param) end)
+                success = success or ok
+            end
+        end
     end
-    -- Veya leaderstats doğrudan varsa
+    -- Doğrudan leaderstats güncelleme
+    local statsList = {"Money","money","Para","para","Bakiye","bakiye"}
     local ls = LocalPlayer:FindFirstChild("leaderstats")
     if ls then
-        for _,v in ipairs({"Money","money","Para","para","Bakiye"}) do
-            local m = ls:FindFirstChild(v)
-            if m and type(m.Value)=="number" then m.Value = m.Value + amount end
+        for _,s in ipairs(statsList) do
+            local m = ls:FindFirstChild(s)
+            if m and type(m.Value)=="number" then
+                m.Value = m.Value + amount
+                success = true
+            end
         end
     end
+    return success
 end
 
-local function realGiveAllItems()
-    local itemList = getTrueGameItemList()
-    local remotes = findRemote({"item","give","ver","add"})
-    for _, item in ipairs(itemList) do
-        for _, r in ipairs(remotes) do
-            pcall(function() r:FireServer(item) end)
+local function tryGiveRealAllItems()
+    local given = 0
+    local itemList = getRealItemList()
+    local remotes = findRemote({"item", "ver", "give", "add"})
+    local blacklist = {
+        "PasPas","Pas pas","Paspas","TestItem","Test","TestArac","Fake","Yok","Empty"
+    }
+    for _,item in ipairs(itemList) do
+        local skip = false
+        for _,blk in ipairs(blacklist) do
+            if item:lower():find(blk:lower()) then skip = true break end
+        end
+        if not skip then
+            for _,remote in ipairs(remotes) do
+                local ok,err = pcall(function()
+                    remote:FireServer(item)
+                end)
+                if ok then given = given + 1 end
+            end
         end
     end
+    -- 2. yol: İnventory'e scriptli kopya
+    local Backpack = LocalPlayer:FindFirstChild("Backpack") or LocalPlayer.Backpack
+    if Backpack then
+        for _,item in ipairs(itemList) do
+            local at = ReplicatedStorage:FindFirstChild(item, true)
+            if at and at:IsA("Tool") then
+                local ok,cloned = pcall(function() return at:Clone() end)
+                if ok and cloned then
+                    pcall(function() cloned.Parent = Backpack end)
+                end
+            end
+        end
+    end
+    return given
 end
 
 local function makeMenu()
@@ -96,6 +161,7 @@ local function makeMenu()
     gui.ResetOnSpawn = false
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = LocalPlayer.PlayerGui
+
     local main = Instance.new("Frame")
     main.Name = "Main"
     main.Size = UDim2.new(0,390,0,180)
@@ -104,6 +170,7 @@ local function makeMenu()
     main.BorderSizePixel = 0
     main.Parent = gui
     roundify(main, 20)
+
     local title = Instance.new("TextLabel")
     title.Parent = main
     title.Size = UDim2.new(1,0,0,45)
@@ -137,6 +204,11 @@ local function makeMenu()
     status.TextSize = 16
     status.Name = "Status"
 
+    local function setStatus(txt)
+        status.Text = txt
+        LastStatus = txt
+    end
+
     local function addBtn(txt, cb, ypos, clr)
         local btn = Instance.new("TextButton")
         btn.Parent = main
@@ -149,21 +221,36 @@ local function makeMenu()
         btn.Text = txt
         btn.AutoButtonColor = true
         roundify(btn,11)
+        local running = false
         btn.MouseButton1Down:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(70,70,90) end)
         btn.MouseButton1Up:Connect(function() btn.BackgroundColor3 = clr or Color3.fromRGB(41,48,54) end)
-        btn.MouseButton1Click:Connect(function() pcall(cb) end)
+        btn.MouseButton1Click:Connect(function()
+            if running then return end
+            running = true
+            setStatus("Lütfen bekleyin...")
+            pcall(cb)
+            running = false
+        end)
         return btn
     end
 
     local Y = 52
     addBtn("1.000.000 Para Ver", function()
-        realGiveMoney(1000000)
-        status.Text = "1 milyon para verildi!"
+        local ok = tryGiveMoney(1000000)
+        if ok then
+            setStatus("1 milyon para verildi!")
+        else
+            setStatus("Para verilemedi, oyun bypassı engelliyor olabilir.")
+        end
     end, Y)
     Y = Y + 45
-    addBtn("Tüm Eşyaları Ver", function()
-        realGiveAllItems()
-        status.Text = "Tüm oyun itemleri alındı, envanterine bak!"
+    addBtn("Tüm Oyun Eşyalarını Al", function()
+        local given = tryGiveRealAllItems()
+        if given > 0 then
+            setStatus("Tüm oyun itemleri envanterine eklendi!")
+        else
+            setStatus("Eşyalar alınamadı! Anti-hile veya farklı sistem olabilir.")
+        end
     end, Y)
     Y = Y + 45
     addBtn("Menüyü Kapat", function()
