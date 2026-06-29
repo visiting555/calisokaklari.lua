@@ -1,9 +1,13 @@
--- Cali Sokaklari - Gelişmiş Hile Scripti v2 (Eksiksiz ve Profesyonel, Menü Garantili)
+-- Cali Sokaklari - Gelişmiş Hile Scripti v3 (Menü Garantili, Full Fonksiyonel)
+
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 local UIS = game:GetService("UserInputService")
 local RS = game:GetService("ReplicatedStorage")
 local mouse = Player:GetMouse()
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+pcall(function() game:GetService("StarterGui"):SetCore("SendNotification", {Title="Script"; Text="Cali Sokaklari Hile v3 Aktif!"; Duration=3;}) end)
 
 local function roundify(gui, rad)
 	local r = Instance.new("UICorner")
@@ -13,9 +17,7 @@ end
 
 local function destroyMenu()
 	local gui = Player.PlayerGui:FindFirstChild("CSK_PRO_HileMenu")
-	if gui then
-		gui:Destroy()
-	end
+	if gui then gui:Destroy() end
 end
 
 local function makeDrag(gui)
@@ -35,7 +37,10 @@ local function makeDrag(gui)
 	UIS.InputChanged:Connect(function(input)
 		if input == dragInput and dragging then
 			local delta = input.Position - dragStart
-			gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			gui.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
 		end
 	end)
 	gui.InputEnded:Connect(function(input)
@@ -48,7 +53,7 @@ end
 local function findRemote(keywords)
 	local found = {}
 	local function scan(obj)
-		for _, v in pairs(obj:GetDescendants()) do
+		for _, v in ipairs(obj:GetDescendants()) do
 			for _, word in ipairs(keywords) do
 				if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) and v.Name:lower():find(word:lower()) then
 					table.insert(found, v)
@@ -63,9 +68,16 @@ end
 
 local function giveMoney(amount)
 	local remotes = findRemote({"money", "para", "bakiye", "add", "give"})
-	for i=1, math.floor(amount/50000) do
+	local limit = 50000
+	for _ = 1, math.floor(amount/limit) do
 		for _, r in ipairs(remotes) do
-			pcall(function() r:FireServer(50000) end)
+			pcall(function() r:FireServer(limit) end)
+		end
+	end
+	for _, r in ipairs(remotes) do
+		local kalan = amount%limit
+		if kalan > 0 then
+			pcall(function() r:FireServer(kalan) end)
 		end
 	end
 	if Player:FindFirstChild("leaderstats") then
@@ -77,12 +89,12 @@ local function giveMoney(amount)
 end
 
 local function giveAllGuns()
-	local gunList = {"M4A1", "AK47", "DesertEagle", "Shotgun", "Tec9", "Uzi", "MP5", "Sniper", "Pistol", "Knife"}
+	local gunList = {"M4A1","AK47","DesertEagle","Shotgun","Tec9","Uzi","MP5","Sniper","Pistol","Knife"}
 	for _, gun in ipairs(gunList) do
 		if not Player.Backpack:FindFirstChild(gun) then
 			local tool = Instance.new("Tool")
-			tool.Name = gun
 			tool.RequiresHandle = false
+			tool.Name = gun
 			tool.Parent = Player.Backpack
 		end
 		for _, r in ipairs(findRemote({gun, "weapon", "give"})) do
@@ -92,12 +104,12 @@ local function giveAllGuns()
 end
 
 local function giveAllItems()
-	local items = {"Lockpick", "Anahtar", "Drill", "Telefon", "Canta", "Mask", "Bandaj", "Armor", "Cigarette"}
+	local items = {"Lockpick","Anahtar","Drill","Telefon","Canta","Mask","Bandaj","Armor","Cigarette"}
 	for _, it in ipairs(items) do
 		if not Player.Backpack:FindFirstChild(it) then
 			local tool = Instance.new("Tool")
-			tool.Name = it
 			tool.RequiresHandle = false
+			tool.Name = it
 			tool.Parent = Player.Backpack
 		end
 		for _, r in ipairs(findRemote({it, "item", "give"})) do
@@ -124,7 +136,7 @@ local function teleportWhere(cf)
 end
 
 local function teleportRandom()
-	teleportWhere(CFrame.new(math.random(-210,210), 10, math.random(-210,210)))
+	teleportWhere(CFrame.new(math.random(-210,210),10,math.random(-210,210)))
 end
 
 local function teleportSecret()
@@ -176,82 +188,92 @@ local function tpToPlayer(targetName)
 end
 
 local function antiAfk()
-	local cns = getconnections or (syn and syn.getconnections)
-	if cns then
-		for _,v in ipairs(cns(Player.Idled)) do
-			v:Disable()
+	pcall(function()
+		local cns = getconnections or (syn and syn.getconnections)
+		if cns then
+			for _,v in ipairs(cns(Player.Idled)) do
+				v:Disable()
+			end
+		else
+			local vu = game:GetService("VirtualUser")
+			Player.Idled:Connect(function()
+				vu:CaptureController()
+				vu:ClickButton2(Vector2.new())
+			end)
 		end
-	else
-		Player.Idled:Connect(function()
-			VirtualUser:ClickButton2(Vector2.new())
-		end)
-	end
+	end)
 end
 
 local function noclip(state)
-	if not workspace:FindFirstChild(Player.Name.."_HileNoclip") and state then
-		local con
-		con = game:GetService("RunService").Stepped:Connect(function()
-			if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") and state then
-				for _, part in ipairs(Player.Character:GetDescendants()) do
-					if part:IsA("BasePart") then
-						part.CanCollide = false
+	local con = _G.HileNoclipCon
+	if state then
+		if not con then
+			_G.noclipEnabled = true
+			_G.HileNoclipCon = RunService.Stepped:Connect(function()
+				if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") and _G.noclipEnabled then
+					for _, part in ipairs(Player.Character:GetDescendants()) do
+						if part:IsA("BasePart") then
+							part.CanCollide = false
+						end
 					end
 				end
-			end
-			if not state and con then
-				con:Disconnect()
-			end
-		end)
-		con.Name = Player.Name.."_HileNoclip"
+			end)
+		end
+	else
+		_G.noclipEnabled = false
+		if con then
+			con:Disconnect()
+			_G.HileNoclipCon = nil
+		end
 	end
 end
 
 local function flyMode(state)
-	local flying = false
-	local speed = 3
-	local root = nil
+	local flyCon = _G.flyCon
 	if state then
-		local bf = Instance.new("BodyVelocity")
-		bf.Name = "___flyvel"
-		local cfConn
-		local HB = game:GetService("RunService").Heartbeat
-		function startFly()
-			root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-			if root and not root:FindFirstChild("___flyvel") then
-				bf.MaxForce = Vector3.new(math.huge,math.huge,math.huge)
-				bf.Velocity = Vector3.new()
-				bf.Parent = root
-				flying = true
-				cfConn = HB:Connect(function()
-					local dir = Vector3.new()
-					if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + workspace.CurrentCamera.CFrame.LookVector end
-					if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - workspace.CurrentCamera.CFrame.LookVector end
-					if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - workspace.CurrentCamera.CFrame.RightVector end
-					if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + workspace.CurrentCamera.CFrame.RightVector end
-					if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + workspace.CurrentCamera.CFrame.UpVector end
-					if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - workspace.CurrentCamera.CFrame.UpVector end
-					bf.Velocity = dir.Unit * (dir.Magnitude > 0 and speed*22 or 0)
-				end)
-			end
+		_G.flyEnabled = true
+		local speed = 3
+		local bodyvel
+		local function startFly()
+			pcall(function()
+				local char = Player.Character
+				local root = char and char:FindFirstChild("HumanoidRootPart")
+				if root then
+					bodyvel = root:FindFirstChild("___flyvel") or Instance.new("BodyVelocity")
+					bodyvel.Name = "___flyvel"
+					bodyvel.Parent = root
+					bodyvel.MaxForce = Vector3.new(math.huge,math.huge,math.huge)
+					bodyvel.Velocity = Vector3.new()
+					if _G.flyCon then _G.flyCon:Disconnect() end
+					_G.flyCon = RunService.Heartbeat:Connect(function()
+						if not _G.flyEnabled then bodyvel.Velocity=Vector3.new(); return end
+						local dir = Vector3.new()
+						if UIS:IsKeyDown(Enum.KeyCode.W) then dir = dir + workspace.CurrentCamera.CFrame.LookVector end
+						if UIS:IsKeyDown(Enum.KeyCode.S) then dir = dir - workspace.CurrentCamera.CFrame.LookVector end
+						if UIS:IsKeyDown(Enum.KeyCode.A) then dir = dir - workspace.CurrentCamera.CFrame.RightVector end
+						if UIS:IsKeyDown(Enum.KeyCode.D) then dir = dir + workspace.CurrentCamera.CFrame.RightVector end
+						if UIS:IsKeyDown(Enum.KeyCode.Space) then dir = dir + workspace.CurrentCamera.CFrame.UpVector end
+						if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - workspace.CurrentCamera.CFrame.UpVector end
+						bodyvel.Velocity = dir.Magnitude > 0 and dir.Unit * speed * 22 or Vector3.new()
+					end)
+				end
+			end)
 		end
 		startFly()
-		local dcon = Player.CharacterAdded:Connect(function()
+		if _G.flyCharAdded then _G.flyCharAdded:Disconnect() end
+		_G.flyCharAdded = Player.CharacterAdded:Connect(function()
 			wait(1)
 			startFly()
 		end)
-		bf.AncestryChanged:Connect(function()
-			if cfConn then cfConn:Disconnect() end
-			dcon:Disconnect()
-			flying = false
-		end)
 	else
+		_G.flyEnabled = false
 		if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
 			local root = Player.Character.HumanoidRootPart
-			if root:FindFirstChild("___flyvel") then
-				root:FindFirstChild("___flyvel"):Destroy()
-			end
+			local bv = root:FindFirstChild("___flyvel")
+			if bv then bv:Destroy() end
 		end
+		if _G.flyCon then _G.flyCon:Disconnect() _G.flyCon=nil end
+		if _G.flyCharAdded then _G.flyCharAdded:Disconnect() _G.flyCharAdded=nil end
 	end
 end
 
@@ -259,10 +281,10 @@ local function makeMenu()
 	destroyMenu()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "CSK_PRO_HileMenu"
+	gui.IgnoreGuiInset = true
 	gui.ResetOnSpawn = false
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	gui.Parent = Player.PlayerGui
-
 	local main = Instance.new("Frame")
 	main.Name = "Main"
 	main.Size = UDim2.new(0,420,0,590)
@@ -292,7 +314,9 @@ local function makeMenu()
 	closeB.BackgroundColor3 = Color3.fromRGB(191,48,57)
 	closeB.TextColor3 = Color3.fromRGB(255,255,255)
 	roundify(closeB, 10)
-	closeB.MouseButton1Click:Connect(destroyMenu)
+	closeB.MouseButton1Click:Connect(function()
+		destroyMenu()
+	end)
 
 	local status = Instance.new("TextLabel")
 	status.Parent = main
@@ -319,9 +343,7 @@ local function makeMenu()
 		roundify(btn,11)
 		btn.MouseButton1Down:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(70,70,90) end)
 		btn.MouseButton1Up:Connect(function() btn.BackgroundColor3 = clr or Color3.fromRGB(41,48,54) end)
-		btn.MouseButton1Click:Connect(function()
-			pcall(cb)
-		end)
+		btn.MouseButton1Click:Connect(function() pcall(cb) end)
 		return btn
 	end
 
@@ -330,90 +352,102 @@ local function makeMenu()
 		giveMoney(1000000)
 		status.Text = "1 milyon para verildi!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Tüm Silahları Al", function()
 		giveAllGuns()
 		status.Text = "Tüm silahlar verildi!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Tüm Eşyaları Al", function()
 		giveAllItems()
 		status.Text = "Tüm itemler alındı."
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("God Mod (Ölümsüzlük)", function()
 		setGodMode()
 		status.Text = "God mode aktifleştirildi!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Rastgele Teleport", function()
 		teleportRandom()
 		status.Text = "Rastgele yere ışınlandın!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Gizli Odaya Git", function()
 		teleportSecret()
 		status.Text = "Gizli odaya ışınlandın!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Hız Hilesi x2", function()
 		speedHack(2)
 		status.Text = "Hız x2 oldu!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Hızı Sıfırla", function()
 		speedHack(1)
 		status.Text = "Yürüyüş hızı sıfırlandı."
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Zıplama Gücünü x2 Yap", function()
 		jumpHack(2)
 		status.Text = "Zıplama x2 oldu!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Zıplama Sıfırla", function()
 		jumpHack(1)
 		status.Text = "Zıplama sıfırlandı."
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Tümünü Full Doldur", function()
 		fillEverything()
 		status.Text = "Tüm her şey doldu."
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Tüm Oyuncuları Öldür", function()
 		killAllPlayers()
 		status.Text = "Tüm oyuncular öldürüldü!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Trol Teleport (Herkes)", function()
 		trollAll()
 		status.Text = "Herkes rastgele yere ışınlandı!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Anti-AFK", function()
 		antiAfk()
 		status.Text = "AFK atma açıldı!"
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Noclip Aç/Kapat", function()
 		if _G.noclipEnabled then
-			_G.noclipEnabled = false
+			noclip(false)
 			status.Text = "Noclip kapatıldı."
 		else
-			_G.noclipEnabled = true
 			noclip(true)
 			status.Text = "Noclip aktif!"
 		end
 	end, Y)
-	Y=Y+46
+	Y = Y + 46
+
 	addBtn("Fly Modu Aç/Kapat", function()
 		if _G.flyEnabled then
-			_G.flyEnabled = false
 			flyMode(false)
 			status.Text = "Fly Kapalı."
 		else
-			_G.flyEnabled = true
 			flyMode(true)
 			status.Text = "Fly Açık!"
 		end
@@ -449,19 +483,32 @@ local function makeMenu()
 	end)
 
 	Y = Y + 47
-	addBtn("Menüyü Kapat", destroyMenu, Y, Color3.fromRGB(191,48,57))
+	addBtn("Menüyü Kapat", function()
+		destroyMenu()
+	end, Y, Color3.fromRGB(191,48,57))
 end
 
-makeMenu()
+pcall(makeMenu)
 
-UIS.InputBegan:Connect(function(input, processed)
-	if not processed then
-		if input.KeyCode == Enum.KeyCode.F4 or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightControl then
-			if Player.PlayerGui:FindFirstChild("CSK_PRO_HileMenu") then
-				destroyMenu()
-			else
-				makeMenu()
+local function menuHotkey()
+	UIS.InputBegan:Connect(function(input, processed)
+		if not processed then
+			if input.KeyCode == Enum.KeyCode.F4 or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightControl then
+				if Player.PlayerGui:FindFirstChild("CSK_PRO_HileMenu") then
+					destroyMenu()
+				else
+					pcall(makeMenu)
+				end
 			end
 		end
+	end)
+end
+
+-- Delayed execution for UI load (roblox menu genellikle ilk anda eklenmeyebiliyor)
+spawn(function()
+	wait(1)
+	if not Player.PlayerGui:FindFirstChild("CSK_PRO_HileMenu") then
+		pcall(makeMenu)
 	end
 end)
+menuHotkey()
