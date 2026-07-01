@@ -171,25 +171,28 @@ local function createMenu()
     local fruitDropdown = Instance.new("TextButton")
     fruitDropdown.Size = UDim2.new(0,220,0,btnH)
     fruitDropdown.Position = UDim2.new(0,98,0,y)
-    fruitDropdown.Text = fruitEspSelection or (dynamicFruits[1] or "Meyve yok")
+    fruitDropdown.Text = (fruitEspSelection or (dynamicFruits[1] or "Meyve yok"))
     fruitDropdown.Font = Enum.Font.Gotham
     fruitDropdown.TextColor3 = Color3.fromRGB(240,240,240)
     fruitDropdown.BackgroundColor3 = Color3.fromRGB(39,41,50)
     fruitDropdown.Parent = frame
 
     local dropdownOpen = false
+    -- Yeni: LİSTE GÖRÜNÜR, HER ZAMAN YAZILI KISIM (Canvas!)
     local fruitListFrame = Instance.new("ScrollingFrame")
     fruitListFrame.Parent = frame
     fruitListFrame.Size = UDim2.new(0,220,0, math.min(#dynamicFruits,7)*32+2)
     fruitListFrame.Position = fruitDropdown.Position + UDim2.new(0,0,0,btnH+2)
-    fruitListFrame.CanvasSize = UDim2.new(0,0,0,#dynamicFruits*32)
+    fruitListFrame.CanvasSize = UDim2.new(0,0,0,math.max(1,#dynamicFruits)*32)
     fruitListFrame.BackgroundColor3 = Color3.fromRGB(34,34,48)
     fruitListFrame.Visible = false
-    fruitListFrame.ZIndex = 2
+    fruitListFrame.ZIndex = 15
     fruitListFrame.BorderSizePixel = 0
     fruitListFrame.ScrollBarThickness = 6
 
-    -- Dinamik, HER ZAMAN LİSTEYİ OLUŞTUR
+    -- ÖNCEKİ ÇOCUKLARI TEMİZLE
+    for _,child in ipairs(fruitListFrame:GetChildren()) do pcall(function() child:Destroy() end) end
+
     for i,fruit in ipairs(dynamicFruits) do
         local fbtn = Instance.new("TextButton")
         fbtn.Size = UDim2.new(1,0,0,32)
@@ -199,8 +202,11 @@ local function createMenu()
         fbtn.TextSize = 16
         fbtn.BackgroundColor3 = Color3.fromRGB(55,55,60)
         fbtn.TextColor3 = Color3.fromRGB(235,235,170)
+        fbtn.Name = "fruit_"..i
         fbtn.Parent = fruitListFrame
         fbtn.AutoButtonColor = true
+        fbtn.Visible = true
+        fbtn.ZIndex = 16
         fbtn.MouseButton1Click:Connect(function()
             fruitEspSelection = fruit
             dropdownOpen = false
@@ -213,6 +219,10 @@ local function createMenu()
         dropdownOpen = not dropdownOpen
         fruitListFrame.Visible = dropdownOpen
     end)
+
+    -- Listeyi güncellediğimizde hem frame boyutu hem childlar hem canvas güncellenir
+    fruitListFrame.Size = UDim2.new(0,220,0,math.min(#dynamicFruits,7)*32+2)
+    fruitListFrame.CanvasSize = UDim2.new(0,0,0,#dynamicFruits*32)
 
     y = y + btnH + (#dynamicFruits > 7 and 220 or 150)
 
