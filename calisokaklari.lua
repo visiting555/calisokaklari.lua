@@ -1,159 +1,149 @@
-// Cali Shootout Roblox ESP, Aimbot, Kill All, Give Item, Give Money Script Menü
-
-// Roblox Lua Script (to be executed in a supported executor)
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local CoreGui = game:GetService("CoreGui")
+local CoreGui = (game:GetService("StarterGui"):SetCore("TopbarEnabled", true) and game:GetService("Players").LocalPlayer.PlayerGui) or game:GetService("CoreGui")
 
 local menuKey = Enum.KeyCode.RightControl
 local menuOpen = false
 local menuUI = nil
 
-local uniqueKey = "CaliMenu_"..tostring(math.random(100000,999999))
+local uniqueKey = "CaliMenu_"..tostring(math.random(100000, 999999))
 local cheats = {
     ESP = false,
     Aimbot = false
 }
 
-local function makeDraggable(gui)
-    local dragToggle, dragStart, startPos
-    gui.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragToggle = true
-            dragStart = input.Position
-            startPos = gui.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragToggle = false
-                end
-            end)
-        end
-    end)
-    gui.InputChanged:Connect(function(input)
-        if dragToggle and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
+local espConnections = {}
+local espHandles = {}
+
+function clearESP()
+    for _,v in ipairs(espHandles) do
+        if v and v.Parent then v:Destroy() end
+    end
+    table.clear(espHandles)
+    for _,v in pairs(espConnections) do
+        if v then v:Disconnect() end
+    end
+    table.clear(espConnections)
 end
 
-local function roundify(obj, rad)
-    local cor = Instance.new("UICorner")
-    cor.CornerRadius = UDim.new(0, rad or 8)
-    cor.Parent = obj
+function espPlayer(plr)
+    if plr == LocalPlayer then return end
+    if not plr.Character or not plr.Character:FindFirstChild("HumanoidRootPart") then return end
+    local box = Instance.new("BoxHandleAdornment")
+    box.Size = Vector3.new(3,6,1.5)
+    box.Color3 = Color3.new(1,0,0)
+    box.AlwaysOnTop = true
+    box.Transparency = 0.5
+    box.Adornee = plr.Character.HumanoidRootPart
+    box.ZIndex = 10
+    box.Parent = CoreGui
+    table.insert(espHandles, box)
+    local function charConn()
+        if box.Parent then box:Destroy() end
+    end
+    local c1 = plr.CharacterRemoving:Connect(charConn)
+    local c2 = plr.CharacterAdded:Connect(function()
+        wait(0.5)
+        espPlayer(plr)
+    end)
+    table.insert(espConnections, c1)
+    table.insert(espConnections, c2)
 end
 
-local function setStatus(text)
+function setESP(state)
+    cheats.ESP = state
+    clearESP()
+    if state then
+        for _,plr in pairs(Players:GetPlayers()) do
+            espPlayer(plr)
+        end
+        local conn = Players.PlayerAdded:Connect(function(plr)
+            espPlayer(plr)
+        end)
+        table.insert(espConnections, conn)
+    end
+end
+
+function setStatus(text)
     if menuUI and menuUI:FindFirstChild("Status") then
         menuUI.Status.Text = text
     end
 end
 
-local function toggleESP(state)
-    cheats.ESP = state
-    setStatus(state and "ESP Açık!" or "ESP Kapalı!")
+function setAimbot(state)
+    cheats.Aimbot = state
 end
 
--- ESP for all other players
-local espHandles = {}
-local function updateESP()
-    for _,handle in ipairs(espHandles) do
-        if handle and handle.Adornee then
-            handle:Destroy()
-        end
-    end
-    table.clear(espHandles)
-    if not cheats.ESP then return end
-    for _,plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            local adornee = plr.Character.HumanoidRootPart
-            local box = Instance.new("BoxHandleAdornment")
-            box.Size = Vector3.new(3,6,1.5)
-            box.Color3 = Color3.new(1,0,0)
-            box.AlwaysOnTop = true
-            box.Transparency = 0.5
-            box.Adornee = adornee
-            box.Parent = CoreGui
-            table.insert(espHandles, box)
-        end
-    end
-end
-
-RunService.RenderStepped:Connect(function()
-    if cheats.ESP then
-        updateESP()
-    else
-        for _,h in ipairs(espHandles) do
-            if h then h:Destroy() end
-        end
-        table.clear(espHandles)
-    end
-end)
-
--- Aimbot
-local closest = nil
-local function getClosestTarget()
+function getClosestTarget()
     local cam = Workspace.CurrentCamera
-    local shortest = math.huge
-    local target = nil
+    local minDist = math.huge
+    local closest = nil
     for _,plr in pairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildOfClass("Humanoid") and plr.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-            local pos, onscreen = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
-            if onscreen then
-                local dist = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
-                if dist < shortest then
-                    shortest = dist
-                    target = plr
+            local pos, vis = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+            if vis then
+                local mouse = UserInputService:GetMouseLocation()
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    closest = plr
                 end
             end
         end
     end
-    return target
+    return closest
 end
 
-RunService.RenderStepped:Connect(function()
-    if cheats.Aimbot and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local t = getClosestTarget()
-        if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") then
-            local cam = Workspace.CurrentCamera
-            cam.CFrame = CFrame.new(cam.CFrame.Position, t.Character.HumanoidRootPart.Position)
-        end
+local aimbotConn
+function toggleAimbot(state)
+    setAimbot(state)
+    if aimbotConn then aimbotConn:Disconnect() end
+    if state then
+        aimbotConn = RunService.RenderStepped:Connect(function()
+            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                local target = getClosestTarget()
+                if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                    local cam = Workspace.CurrentCamera
+                    cam.CFrame = CFrame.new(cam.CFrame.Position, target.Character.HumanoidRootPart.Position)
+                end
+            end
+        end)
     end
-end)
+end
 
--- Kill All (server events-based, works for most games with remote fire, auto-bypass basic checks)
-local function killAll()
+function killAll()
     for _,plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") then
-            if Workspace:FindFirstChild("Bullets") then
-                local Remote = Workspace:FindFirstChild("RemoteEvent") or Workspace:FindFirstChildWhichIsA("RemoteEvent", true)
-                if Remote then
-                    for i=1,5 do
-                        Remote:FireServer("Shoot", plr.Character.HumanoidRootPart.Position, plr)
-                    end
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local remotes = {}
+            for _,v in ipairs(Workspace:GetDescendants()) do
+                if v:IsA("RemoteEvent") and (v.Name:lower():find("damage") or v.Name:lower():find("shoot")) then
+                    table.insert(remotes, v)
                 end
-            elseif plr.Character:FindFirstChild("Humanoid") then
-                plr.Character.Humanoid.Health = 0
+            end
+            for _,remote in ipairs(remotes) do
+                for i=1,7 do
+                    pcall(function()
+                        remote:FireServer(plr.Character.HumanoidRootPart.Position, plr)
+                    end)
+                end
             end
         end
     end
-    setStatus("Kill All başarıyla uygulandı!")
+    setStatus("Kill All tamamlandı!")
 end
 
--- Give All Items (try giving all real items, using possible remote events)
-local function giveAllItems()
-    local Backpack = LocalPlayer:FindFirstChild("Backpack")
-    local ItemRemotes = {}
+function giveAllItems()
+    local count = 0
+    local itemRemotes = {}
     for _,obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("RemoteEvent") and (obj.Name:lower():find("item") or obj.Name:lower():find("give")) then
-            table.insert(ItemRemotes, obj)
+            table.insert(itemRemotes, obj)
         end
     end
-    local count = 0
-    for _,remote in ipairs(ItemRemotes) do
+    for _,remote in ipairs(itemRemotes) do
         pcall(function()
             remote:FireServer("GiveAll")
             count = count + 1
@@ -163,55 +153,78 @@ local function giveAllItems()
     return count
 end
 
--- Give Money (tries to fire all relevant Remotes for cash)
-local function giveMoney(amount)
-    local moneyRemotes = {}
+function giveMoney(amount)
+    local success = false
     for _,obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("RemoteEvent") and (obj.Name:lower():find("money") or obj.Name:lower():find("cash")) then
-            table.insert(moneyRemotes, obj)
+            pcall(function()
+                obj:FireServer(amount)
+                success = true
+            end)
         end
     end
-    local success = false
-    for _,remote in ipairs(moneyRemotes) do
-        pcall(function()
-            remote:FireServer(amount)
-            success = true
-        end)
-    end
-    setStatus(success and ("Para Eklendi: " .. tostring(amount)) or "Para verilemedi!")
+    setStatus(success and ("Para verildi: " .. tostring(amount)) or "Para verilemedi!")
     return success
 end
 
--- MENU
-local function destroyMenu()
+function destroyMenu()
     if menuUI then
         menuUI:Destroy()
     end
     menuUI = nil
     menuOpen = false
+    setESP(false)
+    toggleAimbot(false)
 end
 
-local function makeMenu()
-    if menuUI then destroyMenu() end
+function roundify(obj, rad)
+    local cor = Instance.new("UICorner")
+    cor.CornerRadius = UDim.new(0, rad or 8)
+    cor.Parent = obj
+end
+
+function makeDraggable(gui)
+    local UserInputService = game:GetService("UserInputService")
+    local dragging, dragStart, startPos
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = gui.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    gui.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+function makeMenu()
+    destroyMenu()
     menuOpen = true
     menuUI = Instance.new("ScreenGui")
     menuUI.Name = uniqueKey
     menuUI.Parent = CoreGui
 
     local main = Instance.new("Frame")
-    main.Size = UDim2.new(0, 350, 0, 350)
-    main.Position = UDim2.new(0.5, -175, 0.35, 0)
+    main.Size = UDim2.new(0, 370, 0, 370)
+    main.Position = UDim2.new(0.48, 0, 0.38, 0)
     main.BackgroundColor3 = Color3.fromRGB(33,35,40)
     main.BorderSizePixel = 0
     main.Parent = menuUI
     roundify(main,12)
     main.ClipsDescendants = true
-
     makeDraggable(main)
 
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1,0,0,40)
-    title.Position = UDim2.new(0,0,0,0)
     title.BackgroundTransparency = 1
     title.Text = "CALI SHOOTOUT MENÜ"
     title.Font = Enum.Font.GothamBold
@@ -219,7 +232,6 @@ local function makeMenu()
     title.TextColor3 = Color3.fromRGB(240,220,80)
     title.Parent = main
 
-    -- Status
     local status = Instance.new("TextLabel")
     status.Name = "Status"
     status.Size = UDim2.new(1,0,0,28)
@@ -249,35 +261,30 @@ local function makeMenu()
         return btn
     end
 
-    -- ESP toggle
-    local espBtn = addBtn("ESP Aç / Kapat", function()
-        toggleESP(not cheats.ESP)
+    addBtn("ESP Aç/Kapat", function()
+        setESP(not cheats.ESP)
+        setStatus(cheats.ESP and "ESP Açıldı!" or "ESP Kapatıldı!")
     end)
 
-    -- Aimbot toggle
-    local aimbotBtn = addBtn("Aimbot Aç / Kapat", function()
-        cheats.Aimbot = not cheats.Aimbot
+    addBtn("Aimbot Aç/Kapat", function()
+        toggleAimbot(not cheats.Aimbot)
         setStatus(cheats.Aimbot and "Aimbot Açık!" or "Aimbot Kapalı!")
     end)
 
-    -- Kill All
-    local killAllBtn = addBtn("Kill All", function()
-        setStatus("Kill All çalışıyor...")
+    addBtn("Kill All", function()
+        setStatus("Kill All uygulanıyor...")
         killAll()
     end)
 
-    -- Give All Items
-    local giveItemBtn = addBtn("Tüm Gerçek Eşyaları AL", function()
+    addBtn("Tüm Gerçek Eşyaları AL", function()
         giveAllItems()
     end)
 
-    -- Give Money
-    local paraBtn = addBtn("1.000.000 Para Ver", function()
+    addBtn("1.000.000 Para Ver", function()
         giveMoney(1000000)
     end)
 end
 
--- Hotkey for menu show/hide
 UserInputService.InputBegan:Connect(function(input, processed)
     if not processed and input.KeyCode == menuKey then
         if menuOpen then
