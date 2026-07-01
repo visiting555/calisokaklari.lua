@@ -6,22 +6,30 @@ local Workspace = game:GetService("Workspace")
 local CoreGui = game:GetService("CoreGui")
 
 local uniqueKey = "CaliMenu_"..tostring(math.random(1e5, 1e6-1))
-local cheats = {ESP=false, Aimbot=false, SilentAim=false, KillAll=false, GiveItems=false, GiveMoney=false, Fly=false, Noclip=false}
-local menuUI = nil
+local cheatState = {
+    ESP = false, 
+    Aimbot = false, 
+    SilentAim = false, 
+    KillAll = false, 
+    GiveItems = false, 
+    GiveMoney = false, 
+    Fly = false, 
+    Noclip = false
+}
+local menuGUI = nil
 local open = false
-local espHandles = {}
+local espObjects = {}
 local espConnections = {}
-
-local flyConn, noclipConn
-local flyOn = false
-local noclipOn = false
-local flySpeed = 3
+local aimbotConn
+local silentAimConn
+local flyConn
+local noclipConn
+local flyBodyGyro, flyBodyVel
+local flying = false
 
 function destroyMenu()
-    if menuUI then
-        pcall(function() menuUI:Destroy() end)
-    end
-    menuUI = nil
+    if menuGUI then pcall(function() menuGUI:Destroy() end) end
+    menuGUI = nil
     open = false
     setESP(false)
     setAimbot(false)
@@ -37,162 +45,154 @@ function roundify(obj, rad)
 end
 
 function makeDraggable(gui)
-    local dragging,dragStart, startPos
+    local dragToggle, dragInput, dragStart, startPos
     gui.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 then
-            dragging=true
-            dragStart=input.Position
-            startPos=gui.Position
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragToggle = true
+            dragStart = input.Position
+            startPos = gui.Position
             input.Changed:Connect(function()
-                if input.UserInputState==Enum.UserInputState.End then
-                    dragging=false
-                end
+                if input.UserInputState == Enum.UserInputState.End then dragToggle = false end
             end)
         end
     end)
     gui.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-            local delta=input.Position-dragStart
-            gui.Position=UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
+        if dragToggle and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
         end
     end)
 end
 
 function setStatus(text)
-    if menuUI and menuUI:FindFirstChild("Status") then
-        menuUI.Status.Text = text
+    if menuGUI and menuGUI:FindFirstChild("Status") then
+        menuGUI.Status.Text = text
     end
 end
 
 function clearESP()
-    for _,v in ipairs(espHandles) do
-        pcall(function() if v and v.Parent then v:Destroy() end end)
-    end
-    espHandles = {}
-    for _,v in ipairs(espConnections) do
-        pcall(function() if v then v:Disconnect() end end)
-    end
+    for _,obj in ipairs(espObjects) do pcall(function() obj:Destroy() end) end
+    espObjects = {}
+    for _,conn in ipairs(espConnections) do pcall(function() conn:Disconnect() end) end
     espConnections = {}
 end
 
-function modernESPCharacter(char, plr)
-    if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChildOfClass("Humanoid") then return end
+function skeletonESP(char, plr)
+    local camera = Workspace.CurrentCamera
+    local function createAdornment(type, prop)
+        local a = Instance.new(type)
+        for k,v in pairs(prop) do a[k]=v end
+        a.Parent = camera
+        table.insert(espObjects, a)
+        return a
+    end
+    if not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Head") then return end
     local root = char.HumanoidRootPart
+    local head = char.Head
 
-    -- Main box
-    local box = Instance.new("BoxHandleAdornment")
-    box.Size = Vector3.new(3.5, 6.1, 2.2)
-    box.Adornee = root
-    box.ZIndex = 10
-    box.AlwaysOnTop = true
-    box.Transparency = 0
-    box.Color3 = Color3.fromRGB(255,255,255)
-    box.Parent = Workspace.CurrentCamera
-    table.insert(espHandles, box)
+    local box = createAdornment("BoxHandleAdornment", {
+        Size = Vector3.new(3.6, 6.3, 2.25),
+        Adornee = root,
+        Color3 = Color3.new(1,1,1),
+        AlwaysOnTop = true,
+        ZIndex = 10,
+        Transparency = 0.12
+    })
+    local headBall = createAdornment("SphereHandleAdornment", {
+        Radius = 0.85,
+        Adornee = head,
+        Color3 = Color3.new(1,1,1),
+        AlwaysOnTop = true,
+        ZIndex = 11,
+        Transparency = 0.04
+    })
 
-    -- Head
-    local head = char:FindFirstChild("Head")
-    if head then
-        local headEsp = Instance.new("SphereHandleAdornment")
-        headEsp.Radius = 0.65
-        headEsp.Adornee = head
-        headEsp.Color3 = Color3.fromRGB(255,255,255)
-        headEsp.Transparency = 0
-        headEsp.AlwaysOnTop = true
-        headEsp.ZIndex = 10
-        headEsp.Parent = Workspace.CurrentCamera
-        table.insert(espHandles, headEsp)
-    end
-    -- Body skeleton lines (head->torso, L/R arms, L/R legs)
-    local function makeLine(part0, part1)
-        if part0 and part1 then
-            local beam = Instance.new("Attachment",part0)
-            local beam2 = Instance.new("Attachment",part1)
-            local line = Instance.new("Beam")
-            line.Attachment0 = beam
-            line.Attachment1 = beam2
-            line.Width0 = 0.17
-            line.Width1 = 0.17
-            line.Color = ColorSequence.new(Color3.fromRGB(255,255,255))
-            line.FaceCamera = true
-            line.Parent = Workspace.CurrentCamera
-            table.insert(espHandles, beam)
-            table.insert(espHandles, beam2)
-            table.insert(espHandles, line)
-        end
+    local function makeLine(from, to)
+        if not (from and to and from:IsA("BasePart") and to:IsA("BasePart")) then return end
+        local a0 = Instance.new("Attachment", from)
+        local a1 = Instance.new("Attachment", to)
+        local beam = Instance.new("Beam", camera)
+        beam.Attachment0 = a0
+        beam.Attachment1 = a1
+        beam.Color = ColorSequence.new(Color3.new(1,1,1))
+        beam.Width0 = 0.16
+        beam.Width1 = 0.16
+        beam.FaceCamera = true
+        beam.Transparency = NumberSequence.new(0.04)
+        beam.Segments = 1
+        table.insert(espObjects, a0)
+        table.insert(espObjects, a1)
+        table.insert(espObjects, beam)
     end
 
-    if char:FindFirstChild("Head") and char:FindFirstChild("UpperTorso") then
-        makeLine(char.Head, char.UpperTorso)
-    elseif char:FindFirstChild("Head") and char:FindFirstChild("Torso") then
-        makeLine(char.Head, char.Torso)
-    end
     local upper = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
     if upper then
+        makeLine(head, upper)
         makeLine(upper, char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm"))
         makeLine(upper, char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm"))
         makeLine(upper, char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg"))
         makeLine(upper, char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg"))
-    end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        local c = char.ChildAdded:Connect(function(obj)
-            RunService.RenderStepped:Wait()
-            pcall(function() modernESPCharacter(char, plr) end)
-        end)
-        table.insert(espConnections, c)
+        if char:FindFirstChild("LowerTorso") then
+            makeLine(upper, char.LowerTorso)
+        end
     end
 end
 
-function espPlayer(plr)
+function trackESP(plr)
     if plr == LocalPlayer then return end
-    local function hookChar(char)
-        modernESPCharacter(char,plr)
+    local lastChar = nil
+    local function addESP(chr)
+        if not chr then return end
+        local h = chr:FindFirstChild("Humanoid")
+        if h and h.Health > 0 then skeletonESP(chr, plr) end
     end
-    if plr.Character then
-        pcall(function() hookChar(plr.Character) end)
-    end
-    local c1 = plr.CharacterAdded:Connect(function(char)
-        wait(0.27)
-        pcall(function() hookChar(char) end)
+    if plr.Character then addESP(plr.Character) end
+    local c1 = plr.CharacterAdded:Connect(function(chr)
+        wait(0.13)
+        addESP(chr)
     end)
     table.insert(espConnections, c1)
 end
 
-function setESP(state)
-    cheats.ESP = state
+function setESP(on)
+    cheatState.ESP = on
     clearESP()
-    if state then
-        for _,plr in ipairs(Players:GetPlayers()) do pcall(function() espPlayer(plr) end) end
-        local conn = Players.PlayerAdded:Connect(function(plr) pcall(function() espPlayer(plr) end) end)
+    if on then
+        for _,plr in ipairs(Players:GetPlayers()) do pcall(function() trackESP(plr) end) end
+        local conn = Players.PlayerAdded:Connect(function(p) trackESP(p) end)
         table.insert(espConnections, conn)
     end
 end
 
-local aimbotConn
-function setAimbot(state)
-    cheats.Aimbot = state
+function getClosestPlayerToCursor()
+    local closest, closestDist = nil, math.huge
+    local cam = Workspace.CurrentCamera
+    local mouse = UserInputService:GetMouseLocation()
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChildOfClass("Humanoid") and plr.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+            local pos, onScreen = cam:WorldToViewportPoint(plr.Character.Head.Position)
+            if onScreen then
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closest = plr
+                end
+            end
+        end
+    end
+    return closest
+end
+
+function setAimbot(on)
+    cheatState.Aimbot = on
     if aimbotConn then pcall(function() aimbotConn:Disconnect() end) end
-    if state then
+    if on then
         aimbotConn = RunService.RenderStepped:Connect(function()
             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-                local closest, shortest = nil, math.huge
-                local cam = Workspace.CurrentCamera
-                for _,plr in ipairs(Players:GetPlayers()) do
-                    if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildOfClass("Humanoid") and plr.Character:FindFirstChildOfClass("Humanoid").Health>0 then
-                        local pos,vis = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
-                        if vis then
-                            local mouse = UserInputService:GetMouseLocation()
-                            local dist = (Vector2.new(pos.X,pos.Y)-Vector2.new(mouse.X,mouse.Y)).Magnitude
-                            if dist<shortest then
-                                shortest=dist; closest=plr
-                            end
-                        end
-                    end
-                end
-                if closest and closest.Character and closest.Character:FindFirstChild("HumanoidRootPart") then
-                    cam.CFrame = CFrame.new(cam.CFrame.Position,closest.Character.HumanoidRootPart.Position)
+                local c = getClosestPlayerToCursor()
+                if c and c.Character and c.Character:FindFirstChild("Head") then
+                    local cam = Workspace.CurrentCamera
+                    cam.CFrame = CFrame.new(cam.CFrame.Position, c.Character.Head.Position)
                 end
             end
         end)
@@ -200,43 +200,30 @@ function setAimbot(state)
 end
 
 local silentAimData = {Target=nil}
-local silentAimConn
-function setSilentAim(state)
-    cheats.SilentAim = state
+function setSilentAim(on)
+    cheatState.SilentAim = on
     if silentAimConn then pcall(function() silentAimConn:Disconnect() end) end
     silentAimData.Target = nil
-    if state then
+
+    if on then
         silentAimConn = RunService.Heartbeat:Connect(function()
-            local closest, shortest = nil, math.huge
-            local cam = Workspace.CurrentCamera
-            for _,plr in ipairs(Players:GetPlayers()) do
-                if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildOfClass("Humanoid") and plr.Character:FindFirstChildOfClass("Humanoid").Health>0 then
-                    local pos,vis = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
-                    if vis then
-                        local mouse = UserInputService:GetMouseLocation()
-                        local dist = (Vector2.new(pos.X,pos.Y)-Vector2.new(mouse.X,mouse.Y)).Magnitude
-                        if dist<shortest then
-                            shortest=dist; closest=plr
-                        end
-                    end
-                end
+            silentAimData.Target = nil
+            local t = getClosestPlayerToCursor()
+            if t and t.Character and t.Character:FindFirstChild("Head") then
+                silentAimData.Target = t.Character.Head.Position
             end
-            silentAimData.Target = (closest and closest.Character and closest.Character:FindFirstChild("Head")) and closest.Character.Head or nil
         end)
-        -- Hooker
-        for _,mt in ipairs(getgc(true)) do
-            if typeof(mt)=="table" then
-                for k,v in pairs(mt) do
-                    if tostring(k):lower():find("raycast") and type(v)=="function" then
-                        hookfunction(v, function(...)
-                            if cheats.SilentAim and silentAimData.Target then
-                                local args = {...}
-                                args[2] = (silentAimData.Target.Position - Workspace.CurrentCamera.CFrame.Position).Unit
-                                return v(unpack(args))
-                            end
-                            return v(...)
-                        end)
-                    end
+        if identifyexecutor and (identifyexecutor() == "Krnl" or identifyexecutor():find("ScriptWare") or identifyexecutor():find("Synapse")) then
+            for _,v in pairs(getgc(true)) do
+                if typeof(v) == "function" and islclosure(v) and debug.getinfo(v).name:lower():find("ray") then
+                    hookfunction(v, function(...)
+                        if cheatState.SilentAim and silentAimData.Target then
+                            local args = {...}
+                            args[2] = (silentAimData.Target-Workspace.CurrentCamera.CFrame.Position).Unit
+                            return v(unpack(args))
+                        end
+                        return v(...)
+                    end)
                 end
             end
         end
@@ -245,106 +232,108 @@ end
 
 function killAll()
     local remotes = {}
-    for _,v in ipairs(Workspace:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("damage") or v.Name:lower():find("shoot") or v.Name:lower():find("kill")) then
-            table.insert(remotes,v)
+    for _,obj in ipairs(getgc(true)) do
+        if typeof(obj) == "table" and rawget(obj,"FireServer") then
+            local n = obj.Name and tostring(obj.Name):lower() or ""
+            if n:find("shoot") or n:find("kill") or n:find("damage") then
+                table.insert(remotes,obj)
+            end
         end
     end
-    for _,plr in ipairs(Players:GetPlayers()) do
-        if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            for _,remote in ipairs(remotes) do
-                for i=1,10 do
-                    pcall(function() remote:FireServer(plr.Character.HumanoidRootPart.Position,plr) end)
+    for _,target in ipairs(Players:GetPlayers()) do
+        if target~=LocalPlayer and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local pos = target.Character.HumanoidRootPart.Position
+            for _,r in ipairs(remotes) do
+                for i=1,5 do
+                    pcall(function() r:FireServer(pos, target) end)
                 end
             end
         end
     end
-    setStatus("Kill All tamamlandı!")
+    setStatus("Kill All uygulandı")
 end
 
 function giveAllItems()
-    local added=0
-    local remotes = {}
-    for _,obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("item") or obj.Name:lower():find("give") or obj.Name:lower():find("reward")) then
-            table.insert(remotes,obj)
+    local count = 0
+    for _,obj in ipairs(getgc(true)) do
+        if typeof(obj) == "table" and rawget(obj,"FireServer") then
+            local n = obj.Name and tostring(obj.Name):lower() or ""
+            if n:find("item") or n:find("give") or n:find("reward") then
+                pcall(function()
+                    obj:FireServer("GiveAll")
+                    count = count + 1
+                end)
+            end
         end
     end
-    for _,remote in ipairs(remotes) do
-        pcall(function()
-            remote:FireServer("GiveAll")
-            added=added+1
-        end)
-    end
-    setStatus(added>0 and "Tüm eşyalar verildi!" or "Hiç eşya verilemedi!")
-    return added
+    setStatus(count>0 and "Tüm itemler verildi!" or "Item verilemedi!")
+    return count
 end
 
 function giveMoney(amount)
-    local succ=false
-    for _,obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("money") or obj.Name:lower():find("cash") or obj.Name:lower():find("bank")) then
-            pcall(function()
-                obj:FireServer(amount)
-                succ=true
-            end)
+    local ok = false
+    for _,obj in ipairs(getgc(true)) do
+        if typeof(obj) == "table" and rawget(obj,"FireServer") then
+            local n = obj.Name and tostring(obj.Name):lower() or ""
+            if n:find("money") or n:find("cash") or n:find("para") then
+                pcall(function()
+                    obj:FireServer(amount)
+                    ok = true
+                end)
+            end
         end
     end
-    setStatus(succ and ("Para verildi: "..amount) or "Para verilemedi!")
-    return succ
+    setStatus(ok and ("Para verildi: "..amount) or "Para verilemedi!")
+    return ok
 end
 
-local flying = false
-local flyMove, flyGyro
 function setFly(state)
-    cheats.Fly = state
-    if flyConn then pcall(function() flyConn:Disconnect() end) end
+    cheatState.Fly = state
+    if flyConn then pcall(function() flyConn:Disconnect() end) flyConn = nil end
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    local root = LocalPlayer.Character.HumanoidRootPart
+    local hrp = LocalPlayer.Character.HumanoidRootPart
     if state then
         flying = true
-        if not flyGyro then
-            flyGyro = Instance.new("BodyGyro")
-            flyGyro.P = 9e4
-            flyGyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
-            flyGyro.CFrame = root.CFrame
-            flyGyro.Parent = root
+        if not flyBodyGyro then
+            flyBodyGyro = Instance.new("BodyGyro", hrp)
+            flyBodyGyro.P = 9e4
+            flyBodyGyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
+            flyBodyGyro.CFrame = hrp.CFrame
         end
-        if not flyMove then
-            flyMove = Instance.new("BodyVelocity")
-            flyMove.Velocity = Vector3.new()
-            flyMove.MaxForce = Vector3.new(9e9,9e9,9e9)
-            flyMove.Parent = root
+        if not flyBodyVel then
+            flyBodyVel = Instance.new("BodyVelocity", hrp)
+            flyBodyVel.MaxForce = Vector3.new(9e9,9e9,9e9)
         end
         flyConn = RunService.RenderStepped:Connect(function()
-            if not flying or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+            if not flying or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
+                setFly(false)
+                return
+            end
             local move = Vector3.new()
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Workspace.CurrentCamera.CFrame.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Workspace.CurrentCamera.CFrame.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Workspace.CurrentCamera.CFrame.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Workspace.CurrentCamera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
-            flyMove.Velocity = move.Unit * (move.Magnitude>0 and flySpeed*20 or 0)
-            flyGyro.CFrame = Workspace.CurrentCamera.CFrame
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,2,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,2,0) end
+            flyBodyVel.Velocity = move.Unit * (move.Magnitude > 0 and 60 or 0)
+            flyBodyGyro.CFrame = Workspace.CurrentCamera.CFrame
         end)
     else
         flying = false
-        if flyGyro then pcall(function() flyGyro:Destroy() end) flyGyro=nil end
-        if flyMove then pcall(function() flyMove:Destroy() end) flyMove=nil end
+        if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+        if flyBodyVel then flyBodyVel:Destroy() flyBodyVel = nil end
     end
 end
 
-function setNoclip(state)
-    cheats.Noclip = state
+function setNoclip(on)
+    cheatState.Noclip = on
     if noclipConn then pcall(function() noclipConn:Disconnect() end) end
-    if state then
+    if on then
         noclipConn = RunService.Stepped:Connect(function()
             if LocalPlayer.Character then
                 for _,v in ipairs(LocalPlayer.Character:GetDescendants()) do
-                    if v:IsA("BasePart") and v.CanCollide then
-                        v.CanCollide = false
-                    end
+                    if v:IsA("BasePart") then v.CanCollide = false end
                 end
             end
         end)
@@ -352,14 +341,14 @@ function setNoclip(state)
 end
 
 function waitForGuiParent()
-    for i=1,100 do
-        if syn and syn.protect_gui then break end
+    for i=1,50 do
+        if syn and syn.protect_gui then return CoreGui end
         local guiParent = nil
         pcall(function()
             if CoreGui then guiParent = CoreGui end
         end)
         if guiParent then return guiParent end
-        wait(0.05)
+        wait(0.07)
     end
     return LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
 end
@@ -367,124 +356,120 @@ end
 function makeMenu()
     destroyMenu()
     open = true
-    menuUI = Instance.new("ScreenGui")
-    menuUI.Name = uniqueKey
-    menuUI.ResetOnSpawn=false
-
+    menuGUI = Instance.new("ScreenGui")
+    menuGUI.Name = uniqueKey
+    menuGUI.ResetOnSpawn = false
     local success = false
     pcall(function()
         if syn and syn.protect_gui then
-            syn.protect_gui(menuUI)
-            menuUI.Parent = CoreGui
+            syn.protect_gui(menuGUI)
+            menuGUI.Parent = CoreGui
             success = true
         end
     end)
     if not success then
-        local passed = false
+        local ok = false
         pcall(function()
-            menuUI.Parent = CoreGui
-            passed = (menuUI.Parent == CoreGui)
+            menuGUI.Parent = CoreGui
+            ok = menuGUI.Parent == CoreGui
         end)
-        if not passed then
-            menuUI.Parent = waitForGuiParent()
+        if not ok then
+            menuGUI.Parent = waitForGuiParent()
         end
     end
 
     local main = Instance.new("Frame")
-    main.Size = UDim2.new(0, 390, 0, 475)
-    main.Position = UDim2.new(0.5, -195, 0.47, -225)
-    main.BackgroundColor3 = Color3.fromRGB(32,33,38)
+    main.Size = UDim2.new(0, 410, 0, 530)
+    main.Position = UDim2.new(0.5, -205, 0.47, -265)
+    main.BackgroundColor3 = Color3.fromRGB(30,30,36)
     main.BorderSizePixel = 0
-    main.Parent = menuUI
-    roundify(main,14)
+    main.Parent = menuGUI
+    main.Name = "Main"
+    roundify(main,16)
     main.ClipsDescendants = true
     makeDraggable(main)
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1,0,0,44)
+    title.Size = UDim2.new(1,0,0,48)
     title.BackgroundTransparency = 1
-    title.Text = "CALI SHOOTOUT BYPASS MENÜ"
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 24
+    title.Text = "CALI SHOOTOUT MODERN MENÜ"
+    title.Font = Enum.Font.GothamBlack
+    title.TextSize = 27
     title.TextColor3 = Color3.fromRGB(255,255,255)
     title.Parent = main
 
     local status = Instance.new("TextLabel")
     status.Name = "Status"
-    status.Size = UDim2.new(1,0,0,27)
-    status.Position = UDim2.new(0,0,1,-27)
+    status.AnchorPoint = Vector2.new(0,1)
+    status.Position = UDim2.new(0,0,1,0)
+    status.Size = UDim2.new(1,0,0,30)
     status.BackgroundTransparency = 1
     status.Text = "Hazır"
     status.Font = Enum.Font.Gotham
     status.TextSize = 16
-    status.TextColor3 = Color3.fromRGB(171,224,242)
+    status.TextColor3 = Color3.fromRGB(185,221,241)
     status.Parent = main
 
-    local Y=50
+    local Y=55
     local function addBtn(text,callback)
         local btn = Instance.new("TextButton")
         btn.Parent = main
-        btn.Size = UDim2.new(0.92,0,0,36)
-        btn.Position = UDim2.new(0.04,0,0,Y)
-        btn.BackgroundColor3 = Color3.fromRGB(44,44,44)
-        btn.TextColor3 = Color3.fromRGB(232,232,232)
+        btn.Size = UDim2.new(0.9,0,0,38)
+        btn.Position = UDim2.new(0.05,0,0,Y)
+        btn.BackgroundColor3 = Color3.fromRGB(44,44,54)
+        btn.TextColor3 = Color3.fromRGB(244,244,244)
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 19
+        btn.TextSize = 20
         btn.Text = text
         btn.AutoButtonColor = true
-        roundify(btn,12)
+        roundify(btn,13)
         btn.MouseButton1Click:Connect(callback)
-        Y = Y + 45
-        return btn
+        Y = Y + 43
     end
 
-    addBtn("ESP Aç/Kapat (Modern)", function()
-        setESP(not cheats.ESP)
-        setStatus(cheats.ESP and "ESP Açıldı!" or "ESP Kapatıldı!")
+    addBtn("ESP (Modern, Beyaz, Kutu & İskelet) Aç/Kapat", function()
+        setESP(not cheatState.ESP)
+        setStatus("ESP " .. (cheatState.ESP and "Açık!" or "Kapalı!"))
     end)
     addBtn("Aimbot Aç/Kapat", function()
-        setAimbot(not cheats.Aimbot)
-        setStatus(cheats.Aimbot and "Aimbot Açık!" or "Aimbot Kapalı!")
+        setAimbot(not cheatState.Aimbot)
+        setStatus("Aimbot " .. (cheatState.Aimbot and "Açık!" or "Kapalı!"))
     end)
     addBtn("SilentAim Aç/Kapat", function()
-        setSilentAim(not cheats.SilentAim)
-        setStatus(cheats.SilentAim and "SilentAim Açık!" or "SilentAim Kapalı!")
+        setSilentAim(not cheatState.SilentAim)
+        setStatus("SilentAim " .. (cheatState.SilentAim and "Açık!" or "Kapalı!"))
     end)
     addBtn("Kill All", function()
-        setStatus("Kill All uygulanıyor...")
+        setStatus("Kill All aktif...")
         killAll()
     end)
-    addBtn("Tüm Gerçek Eşyaları AL", function()
+    addBtn("Tüm Eşyaları AL", function()
         giveAllItems()
     end)
     addBtn("1.000.000 Para Ver", function()
         giveMoney(1000000)
     end)
-    addBtn("Fly Aç/Kapat", function()
-        setFly(not cheats.Fly)
-        setStatus(cheats.Fly and "Fly Açık!" or "Fly Kapalı!")
+    addBtn("Fly (Uçuş) Aç/Kapat", function()
+        setFly(not cheatState.Fly)
+        setStatus("Fly " .. (cheatState.Fly and "Açık!" or "Kapalı!"))
     end)
     addBtn("Noclip Aç/Kapat", function()
-        setNoclip(not cheats.Noclip)
-        setStatus(cheats.Noclip and "Noclip Açık!" or "Noclip Kapalı!")
+        setNoclip(not cheatState.Noclip)
+        setStatus("Noclip " .. (cheatState.Noclip and "Açık!" or "Kapalı!"))
     end)
 end
 
 local function allowFirstMenu()
-    for i=1,10 do
+    for _=1,10 do
         makeMenu()
-        wait(0.12)
-        if menuUI and menuUI.Parent and menuUI.Parent:IsA("ScreenGui")==false then break end
+        wait(0.11)
+        if menuGUI and menuGUI.Parent then break end
     end
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
     if not processed and (input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.F4) then
-        if open then
-            destroyMenu()
-        else
-            makeMenu()
-        end
+        if open then destroyMenu() else makeMenu() end
     end
 end)
 
