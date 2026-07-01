@@ -1,12 +1,13 @@
 --[[
-Blox Fruits Script v2 - Menü Tüm Executorlar İçin Garanti!
-- Menü her durumda açılır, ana PlayerGui değil CoreGui'ya parent'lanır!
-- Fly, Noclip, ESP, Aimbot, Meyve ESP/TP hepsi tam fonksiyonlu
-- F4/Insert/Right Ctrl ile aç/kapat. Script başında otomatik gösterir!
-- Meyve seç, tüm haritadaki örnek: Kitsune, esp, tp ve al!
+Blox Fruits Script v3
+- Gelişmiş, her executor için menü garantili! (CoreGui ve PlayerGui fallback)
+- Fly, Noclip, ESP, Meyve seç/tp/take tam çalışır.
+- GUI script yüklenince otomatik açılır ve F4/Insert/Right Ctrl ile tekrar aç/kapat yapılabilir.
+- Hangi executorda olursa olsun, menü ekrana gelmiyorsa PlayerGui'ya da parentlar!
+- "Kitsune" örneği gibi tüm meyveler çalışır.
 ]]
 
--- GLOBAL DEĞIŞKENLER
+-- SERVİSLER ve DEĞİŞKENLER
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
@@ -23,30 +24,56 @@ local fruitEspBillboards = {}
 local flyConn, noclipConn = nil, nil
 local flying, noclipping = false, false
 
--- KULLANILABILIR TÜM FRUITS
 local availableFruits = {
     "Kitsune", "Dough", "Leopard", "Dragon", "Venom",
     "Spirit", "Magma", "Light", "Dark", "Flame"
 }
 
--- UTIL: FAZLA OLAN GUI'YI SİL
-for _,v in ipairs(CoreGui:GetChildren()) do
-    if v:IsA("ScreenGui") and v.Name:find("BFPRO_") then pcall(function() v:Destroy() end) end
+-- DEVAMLI GUI SİLME KONTROLÜ (CoreGui ve PlayerGui için!)
+pcall(function()
+    for _,v in ipairs(CoreGui:GetChildren()) do
+        if v:IsA("ScreenGui") and v.Name:find("BFPRO_") then v:Destroy() end
+    end
+end)
+pcall(function()
+    for _,v in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+        if v:IsA("ScreenGui") and v.Name:find("BFPRO_") then v:Destroy() end
+    end
+end)
+
+-- FORCE PARENT (başarısızsa PlayerGui'ya dener)
+local function robustParent(gui)
+    local done = false
+    pcall(function()
+        gui.Parent = CoreGui
+        done = gui.Parent == CoreGui
+    end)
+    if not done then
+        pcall(function()
+            gui.Parent = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+        end)
+    end
 end
 
--- FIZIKSEL GUI OLUŞTURMA
+-- GUI OLUŞTURMA (Her zaman açılır/fallback ile)
 local function createMenu()
     if menuGui then pcall(function() menuGui:Destroy() end) end
+
     menuGui = Instance.new("ScreenGui")
     menuGui.ResetOnSpawn = false
     menuGui.DisplayOrder = 9e6
     menuGui.Name = guiName
-    pcall(function() menuGui.Parent = CoreGui end)
-    if not menuGui.Parent then menuGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-    -- ANA ÇERÇEVE
+    robustParent(menuGui)
+
+    if not menuGui.Parent then
+        warn("[BFPRO] Menü yüklenemedi! CoreGui ve PlayerGui başarısız.")
+        return
+    end
+
+    -- Menü frame
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 410, 0, 475)
+    frame.Size = UDim2.new(0, 415, 0, 480)
     frame.Position = UDim2.new(0, 60, 0, 80)
     frame.BackgroundColor3 = Color3.fromRGB(25,28,38)
     frame.BorderSizePixel = 0
@@ -54,7 +81,7 @@ local function createMenu()
     frame.Draggable = true
     frame.Parent = menuGui
 
-    -- BAŞLIK
+    -- Başlık
     local title = Instance.new("TextLabel")
     title.Text = "Blox Fruits PRO Menü"
     title.Font = Enum.Font.GothamBold
@@ -64,13 +91,13 @@ local function createMenu()
     title.BackgroundTransparency = 1
     title.Parent = frame
 
-    -- KAPAT TUŞU
+    -- Kapat tuşu
     local closeBtn = Instance.new("TextButton")
     closeBtn.Text = "X"
     closeBtn.Size = UDim2.new(0,36,0,36)
     closeBtn.Position = UDim2.new(1,-46,0,6)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextColor3 = Color3.new(1, 0, 0)
+    closeBtn.TextColor3 = Color3.new(1,0,0)
     closeBtn.BackgroundColor3 = Color3.fromRGB(55,55,55)
     closeBtn.BorderSizePixel = 0
     closeBtn.Parent = frame
@@ -82,7 +109,7 @@ local function createMenu()
     local btnH = 40
     local padding = 10
 
-    -- BUTON ARACI
+    -- Toggle aracı
     local function addToggle(name, key, ypos, callback)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 175, 0, btnH)
@@ -97,7 +124,7 @@ local function createMenu()
         btn.MouseButton1Click:Connect(function()
             toggles[key] = not toggles[key]
             callback(toggles[key])
-            createMenu() -- YENIDEN yükle
+            createMenu()
         end)
     end
 
@@ -105,7 +132,7 @@ local function createMenu()
     addToggle("Noclip", "Noclip", y, function(val) setNoclip(val) end)
     y = y + btnH + padding
 
-    -- MEYVE SEÇME LABEL
+    -- Meyve seçme:
     local fruitLbl = Instance.new("TextLabel")
     fruitLbl.Text = "Meyve Seç: "
     fruitLbl.TextSize = 17
@@ -116,11 +143,10 @@ local function createMenu()
     fruitLbl.Font = Enum.Font.GothamBold
     fruitLbl.Parent = frame
 
-    -- DROPDOWN
     local fruitDropdown = Instance.new("TextButton")
     fruitDropdown.Size = UDim2.new(0,220,0,btnH)
     fruitDropdown.Position = UDim2.new(0,98,0,y)
-    fruitDropdown.Text = fruitEspSelection or "Meyve seçin"
+    fruitDropdown.Text = fruitEspSelection or "Meyve seçin..."
     fruitDropdown.Font = Enum.Font.Gotham
     fruitDropdown.TextColor3 = Color3.fromRGB(240,240,240)
     fruitDropdown.BackgroundColor3 = Color3.fromRGB(39,41,50)
@@ -148,7 +174,6 @@ local function createMenu()
         fbtn.BackgroundColor3 = Color3.fromRGB(55,55,60)
         fbtn.TextColor3 = Color3.fromRGB(235,235,170)
         fbtn.Parent = fruitListFrame
-
         fbtn.MouseButton1Click:Connect(function()
             fruitEspSelection = fruit
             dropdownOpen = false
@@ -164,7 +189,7 @@ local function createMenu()
 
     y = y + btnH + 150
 
-    -- MEYVE ESP BUTONU
+    -- ESP Butonu
     local fruitEspBtn = Instance.new("TextButton")
     fruitEspBtn.AnchorPoint = Vector2.new(0.5,0)
     fruitEspBtn.Size = UDim2.new(0, 360, 0, btnH)
@@ -184,7 +209,7 @@ local function createMenu()
 
     y = y + btnH + padding
 
-    -- TP BUTONU
+    -- TP Butonu
     local tpBtn = Instance.new("TextButton")
     tpBtn.AnchorPoint = Vector2.new(0.5,0)
     tpBtn.Size = UDim2.new(0, 360, 0, btnH)
@@ -201,13 +226,13 @@ local function createMenu()
     end)
 end
 
--- Destroy helper
+-- Helper: destroy table of instances
 local function destroyTable(tb)
     for _,v in pairs(tb) do pcall(function() v:Destroy() end) end
     table.clear(tb)
 end
 
--- FLY ÖZELLİĞİ
+-- FLY
 function setFly(on)
     if flying then
         if flyConn then flyConn:Disconnect() flyConn = nil end
@@ -290,13 +315,16 @@ function setFruitESP(on)
             end
         end
     end
-    -- dinamik, yeni fruit gelirse eklesin
-    Workspace.DescendantAdded:Connect(function(x)
-        if toggles.FruitESP then setFruitESP(true) end
-    end)
-    Workspace.DescendantRemoving:Connect(function(x)
-        if toggles.FruitESP then setFruitESP(true) end
-    end)
+    -- ESP dinamik güncellemesi:
+    if not setFruitESP._connAdded then
+        setFruitESP._connAdded = true
+        Workspace.DescendantAdded:Connect(function(_)
+            if toggles.FruitESP then setFruitESP(true) end
+        end)
+        Workspace.DescendantRemoving:Connect(function(_)
+            if toggles.FruitESP then setFruitESP(true) end
+        end)
+    end
 end
 
 function tpToFruitAndPickup()
@@ -310,18 +338,20 @@ function tpToFruitAndPickup()
             if h then
                 local dist = (char.HumanoidRootPart.Position-h.Position).Magnitude
                 if not pos or dist < pos then
-                    pos = dist;
+                    pos = dist
                     target = h
                 end
             end
         end
     end
     if not target then
-        game.StarterGui:SetCore("SendNotification", {
-            Title="Meyve",
-            Text="Meyve bulunamadı!",
-            Duration=3
-        })
+        pcall(function()
+            game.StarterGui:SetCore("SendNotification", {
+                Title="Meyve",
+                Text="Meyve bulunamadı!",
+                Duration=3
+            })
+        end)
         return
     end
     for _=1,15 do
@@ -334,14 +364,16 @@ function tpToFruitAndPickup()
         wait(0.1)
         firetouchinterest(char.HumanoidRootPart, target, 1)
     end)
-    game.StarterGui:SetCore("SendNotification", {
-        Title="Meyve",
-        Text=fruitEspSelection.." alındı (veya çok yakında olabilir)!",
-        Duration=2
-    })
+    pcall(function()
+        game.StarterGui:SetCore("SendNotification", {
+            Title="Meyve",
+            Text=fruitEspSelection.." alındı (veya çok yakında olabilir)!",
+            Duration=2
+        })
+    end)
 end
 
--- HOTKEY
+-- HOTKEY, Gelişmiş fallback! Önce menü parent check eder, yoksa yeniden açar!
 UserInputService.InputBegan:Connect(function(input, processed)
     if not processed and (
         input.KeyCode == Enum.KeyCode.F4 or
@@ -357,5 +389,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- GİRİNCE OTOMATIK MENÜYÜ GÖSTER
-createMenu()
+-- Otomatik başlatıcı/fallback loop: Menü açılmazsa 3 kez daha dener!
+local tries = 0
+local function safeCreate()
+    if menuGui and menuGui.Parent then return end
+    tries = tries + 1
+    createMenu()
+    if (not menuGui or not menuGui.Parent) and tries < 4 then
+        task.wait(0.7)
+        safeCreate()
+    end
+end
+safeCreate()
