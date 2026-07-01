@@ -1,10 +1,8 @@
 --[[
-Blox Fruits Script v3
-- Gelişmiş, her executor için menü garantili! (CoreGui ve PlayerGui fallback)
-- Fly, Noclip, ESP, Meyve seç/tp/take tam çalışır.
-- GUI script yüklenince otomatik açılır ve F4/Insert/Right Ctrl ile tekrar aç/kapat yapılabilir.
-- Hangi executorda olursa olsun, menü ekrana gelmiyorsa PlayerGui'ya da parentlar!
-- "Kitsune" örneği gibi tüm meyveler çalışır.
+Blox Fruits Script v3.1
+- Menü başlığı "visitingmenu"
+- Fly, Noclip, meyve seç/Tp/ESP
+- Meyve listesi her zaman dolu ve güncel! 
 ]]
 
 -- SERVİSLER ve DEĞİŞKENLER
@@ -25,48 +23,32 @@ local flyConn, noclipConn = nil, nil
 local flying, noclipping = false, false
 
 ------------------------------------------------
--- DİNAMİK MEYVE ADI ÇEKİCİ
+-- STATİK ve DİNAMİK ENTEGRE MEYVE LİSTESİ
+local function knownFruits()
+    -- Statik olarak ekli en popüler Blox Fruits meyveleri:
+    return {
+        "Kitsune", "Dragon", "Leopard", "Venom", "Dough", "Spirit", "Magma", "Light", "Dark", "Flame",
+        "Quake", "Human: Buddha", "Ice", "Phoenix", "Mammoth", "Love", "Spider", "Portal", "Barrier",
+        "Rubber", "Sand", "Diamond", "Ghost", "Sound", "Falcon", "Spin", "Bomb", "Spring", "Chop", "Revive", "Smoke", "Spike", "Kilo"
+    }
+end
+
 local function getFruitsOnMap()
-    local results = {}
+    local found = {}
     local already = {}
-    -- Blox Fruits'te meyveler genellikle Workspace/ veya Workspace'deki belirli childlarda (ör: "Fruit") olur.
-    -- Tüm Workspace'teki adı meyveye benzeyen Tool'ları, MeshPart/Part'ların adlarını topla
-    for _,obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA("Tool") or obj:IsA("Model") or obj:IsA("Part") or obj:IsA("MeshPart") then
-            local n = tostring(obj.Name)
-            -- Blox Fruits'teki gerçek meyvelerin adı çoğunlukla "Something Fruit"
-            if n:lower():find("fruit") or true then
-                -- Not: true dedik, tüm objelerde isim meyveye benziyorsa göster
-                if not already[n] then
-                    table.insert(results, n)
-                    already[n]=true
-                end
-            end
-        end
-        if obj:IsA("Folder") or obj:IsA("Model") then
-            -- Tool içeren Folder (ör: "Fruit") varsa orada da ara
-            for _,item in ipairs(obj:GetDescendants()) do
-                if item:IsA("Tool") or item:IsA("Model") or item:IsA("Part") or item:IsA("MeshPart") then
-                    local n = tostring(item.Name)
-                    if n:lower():find("fruit") or true then
-                        if not already[n] then
-                            table.insert(results, n)
-                            already[n]=true
-                        end
-                    end
-                end
-            end
+    -- Workspace'teki meyveleri searchle
+    for _,obj in ipairs(Workspace:GetDescendants()) do
+        local n = tostring(obj.Name)
+        if (obj:IsA("Tool") or obj:IsA("Model") or obj:IsA("Part") or obj:IsA("MeshPart")) and n:lower():find("fruit") then
+            if not already[n] then table.insert(found, n) already[n] = true end
         end
     end
-    -- Statik toplama fallback (hiçbiri bulunmazsa default liste ata)
-    if #results == 0 then
-        results = {
-            "Kitsune", "Leopard", "Dragon", "Venom",
-            "Dough", "Spirit", "Magma", "Light", "Dark", "Flame"
-        }
+    -- Statik meyveleri ekle (listede yoksa)
+    for _,fruit in ipairs(knownFruits()) do
+        if not already[fruit] then table.insert(found, fruit) already[fruit] = true end
     end
-    table.sort(results)
-    return results
+    table.sort(found)
+    return found
 end
 
 -- DEVAMLI GUI SİLME KONTROLÜ (CoreGui ve PlayerGui için!)
@@ -121,9 +103,9 @@ local function createMenu()
     frame.Draggable = true
     frame.Parent = menuGui
 
-    -- Başlık
+    -- Başlık GÜNCELLENDİ
     local title = Instance.new("TextLabel")
-    title.Text = "Blox Fruits PRO Menü"
+    title.Text = "visitingmenu"
     title.Font = Enum.Font.GothamBold
     title.TextColor3 = Color3.fromRGB(220,190,50)
     title.TextScaled = true
@@ -172,7 +154,7 @@ local function createMenu()
     addToggle("Noclip", "Noclip", y, function(val) setNoclip(val) end)
     y = y + btnH + padding
 
-    -- MEYVE LİSTESİ DİNAMİK GELİYOR
+    -- MEYVE LİSTESİ HER ZAMAN VAR
     local dynamicFruits = getFruitsOnMap()
 
     -- Meyve seçme:
@@ -207,8 +189,8 @@ local function createMenu()
     fruitListFrame.BorderSizePixel = 0
     fruitListFrame.ScrollBarThickness = 6
 
-    -- DİNAMİK MEYVE BUTTON EKLEME
-    for i,fruit in pairs(dynamicFruits) do
+    -- Dinamik, HER ZAMAN LİSTEYİ OLUŞTUR
+    for i,fruit in ipairs(dynamicFruits) do
         local fbtn = Instance.new("TextButton")
         fbtn.Size = UDim2.new(1,0,0,32)
         fbtn.Position = UDim2.new(0, 0, 0, (i-1)*32)
@@ -271,13 +253,11 @@ local function createMenu()
     end)
 end
 
--- Helper: destroy table of instances
 local function destroyTable(tb)
     for _,v in pairs(tb) do pcall(function() v:Destroy() end) end
     table.clear(tb)
 end
 
--- FLY
 function setFly(on)
     if flying then
         if flyConn then flyConn:Disconnect() flyConn = nil end
@@ -320,7 +300,6 @@ function setFly(on)
     end
 end
 
--- NOCLIP
 function setNoclip(on)
     if noclipConn then noclipConn:Disconnect() noclipConn=nil end
     noclipping = false
@@ -336,7 +315,6 @@ function setNoclip(on)
     end
 end
 
--- FRUIT ESP
 function setFruitESP(on)
     destroyTable(fruitEspBillboards)
     if not on or not fruitEspSelection then return end
@@ -360,7 +338,6 @@ function setFruitESP(on)
             end
         end
     end
-    -- ESP dinamik güncellemesi:
     if not setFruitESP._connAdded then
         setFruitESP._connAdded = true
         Workspace.DescendantAdded:Connect(function(_)
@@ -403,7 +380,6 @@ function tpToFruitAndPickup()
         char.HumanoidRootPart.CFrame = target.CFrame+Vector3.new(0,3,0)
         wait(0.07)
     end
-    -- TOUCH PICKUP
     pcall(function()
         firetouchinterest(char.HumanoidRootPart, target, 0)
         wait(0.1)
