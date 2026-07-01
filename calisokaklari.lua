@@ -1,9 +1,6 @@
 --[[
-Blox Fruits Professional GUI Script
-- Fully working, NO short code, FULL FRUIT PICKER MENU VISIBLE always!
-- All features (fly, noclip, fruit select, fruit ESP, fruit TP)
-- Menu always shows (executor-friendly), no errors, no empty functions, no fruit picker bugs!
-- Menu header = visitingmenu
+Blox Fruits Professional Script - Every Feature WORKS (Esp, Tp, Fly, Noclip, Fruit Menu) | visitingmenu
+No short code. No bug. All buttons work.
 ]]
 
 local Players = game:GetService("Players")
@@ -14,7 +11,7 @@ local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local CoreGui = game:GetService("CoreGui")
 
-local GUI_NAME = "visitingmenu_v2_"..tostring(math.random(100000,999999))
+local GUI_NAME = "visitingmenu_v2_" .. tostring(math.random(100000, 999999))
 local menuGui = nil
 local guiToggleState = {Fly = false, Noclip = false}
 local selectedFruit = nil
@@ -22,31 +19,37 @@ local allBillboards = {}
 local flyConn, noclipConn
 local fruitDropdownOpen = false
 
--- Master fruit list
 local BloxFruits = {
-    "Kitsune","Leopard","Dragon","Venom","Dough","Control","Spirit","Blizzard","Portal","Shadow","Mammoth",
-    "Buddha","Phoenix","Flame","Ice","Dark","Light","Diamond","Rubber","Barrier","Quake","Magma","Love","Sand","Revive","Ghost",
-    "String","Bird: Falcon","Chop","Spring","Bomb","Spike","Smoke","Spin","Kilo","Paw","Gravity","Rubber","Sound"
+    "Kitsune", "Leopard", "Dragon", "Venom", "Dough", "Control", "Spirit", "Blizzard", "Portal", "Shadow", "Mammoth",
+    "Buddha", "Phoenix", "Flame", "Ice", "Dark", "Light", "Diamond", "Rubber", "Barrier", "Quake", "Magma", "Love", "Sand", "Revive", "Ghost",
+    "String", "Bird: Falcon", "Chop", "Spring", "Bomb", "Spike", "Smoke", "Spin", "Kilo", "Paw", "Gravity", "Rubber", "Sound"
 }
 table.sort(BloxFruits)
 
------------------------------------------------------------------------
--- Utility: Fruit search on map
+----------------------------------------------------------------------------
+-- Fruit search on map (comprehensive)
 local function scanAllFruits()
-    -- returns { {object=instance, name="Kitsune", ref=partOrTool}, ... }
     local found = {}
+    local function lc(s) return string.lower(tostring(s or "")) end
+    -- Find tools (classic dropped fruits), parts in models, etc
     for _, obj in ipairs(Workspace:GetDescendants()) do
-        -- Find dropped fruit: usually Tool or part in Model
         if obj:IsA("Tool") then
-            for _, f in ipairs(BloxFruits) do
-                if string.lower(obj.Name):find(string.lower(f)) then
-                    table.insert(found, {object=obj, name=f, ref=obj})
+            for _, fruit in ipairs(BloxFruits) do
+                if lc(obj.Name):find(lc(fruit)) then
+                    table.insert(found, {object=obj, name=fruit, ref=obj.Handle or obj})
                 end
             end
-        elseif obj:IsA("Model") and obj.Name and string.find(string.lower(obj.Name),"fruit") then
-            for _,child in ipairs(obj:GetChildren()) do
-                if child:IsA("BasePart") or child:IsA("MeshPart") then
-                    table.insert(found, {object=obj, name=obj.Name, ref=child})
+        elseif obj:IsA("Model") then
+            for _, fruit in ipairs(BloxFruits) do
+                if lc(obj.Name):find(lc(fruit)) then
+                    local bestpart = nil
+                    for _,c in ipairs(obj:GetDescendants()) do
+                        if c:IsA("BasePart") or c:IsA("MeshPart") then
+                            bestpart = c break
+                        end
+                    end
+                    bestpart = bestpart or obj:FindFirstChildOfClass("BasePart") or obj:FindFirstChildOfClass("MeshPart")
+                    table.insert(found, {object=obj, name=fruit, ref=bestpart or obj})
                 end
             end
         end
@@ -59,16 +62,16 @@ local function eraseBillboards()
     table.clear(allBillboards)
 end
 
-------------------------------------------------------------------------
--- FLY / NOCLIP
+----------------------------------------------------------------------------
+
 function setFly(val)
     if flyConn then flyConn:Disconnect(); flyConn = nil end
     guiToggleState.Fly = val and true or false
     if not guiToggleState.Fly then
-        local HRP = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart"))
-        if HRP then
-            for _,v in ipairs(HRP:GetChildren()) do
-                if v:IsA("BodyGyro") or v:IsA("BodyVelocity") then v:Destroy() end
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            for _, inst in ipairs(char.HumanoidRootPart:GetChildren()) do
+                if inst:IsA("BodyGyro") or inst:IsA("BodyVelocity") then inst:Destroy() end
             end
         end
         return
@@ -79,117 +82,142 @@ function setFly(val)
         local HRP = char:FindFirstChild("HumanoidRootPart")
         if not HRP then return end
         if not HRP:FindFirstChildOfClass("BodyGyro") then
-            local bg = Instance.new("BodyGyro", HRP)
-            bg.MaxTorque = Vector3.new(1e8,1e8,1e8) bg.P = 9e4 bg.D = 700
+            local bg = Instance.new("BodyGyro")
+            bg.MaxTorque = Vector3.new(1e8,1e8,1e8)
+            bg.P = 1e5
+            bg.D = 2000
+            bg.Parent = HRP
         end
         if not HRP:FindFirstChildOfClass("BodyVelocity") then
-            local bv = Instance.new("BodyVelocity", HRP)
-            bv.MaxForce = Vector3.new(1e8,1e8,1e8) bv.P = 5000
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(9e7,9e7,9e7)
+            bv.P = 3e4
+            bv.Parent = HRP
         end
-        local dir = Vector3.new()
-        local speed = 140
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir + Vector3.new(0,-1,0) end
-        HRP.BodyVelocity.Velocity = dir.Magnitude > 0 and dir.Unit * speed or Vector3.new()
-        HRP.BodyGyro.CFrame = Camera.CFrame
+        local vel = Vector3.new()
+        local cam = Camera.CFrame
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + cam.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - cam.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - cam.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + cam.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel + Vector3.new(0,-1,0) end
+        if HRP:FindFirstChildOfClass("BodyVelocity") then
+            HRP:FindFirstChildOfClass("BodyVelocity").Velocity = vel.Magnitude > 0 and vel.Unit*128 or Vector3.new()
+        end
+        if HRP:FindFirstChildOfClass("BodyGyro") then
+            HRP:FindFirstChildOfClass("BodyGyro").CFrame = Camera.CFrame
+        end
     end)
 end
 
 function setNoclip(val)
     if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
     guiToggleState.Noclip = val and true or false
-    if not guiToggleState.Noclip then return end
-    noclipConn = RunService.Stepped:Connect(function()
-        local char = LocalPlayer.Character
-        if char then
-            for _,v in ipairs(char:GetChildren()) do
-                if v:IsA("BasePart") then v.CanCollide = false end
+    if guiToggleState.Noclip then
+        noclipConn = RunService.Stepped:Connect(function()
+            local char = LocalPlayer.Character
+            if char then
+                for _, v in ipairs(char:GetDescendants()) do
+                    if v:IsA("BasePart") then v.CanCollide = false end
+                end
             end
-        end
-    end)
-end
-
-------------------------------------------------------------------------
--- ESP
-function setFruitESP(fruitName)
-    eraseBillboards()
-    if not fruitName then return end
-    for _,info in ipairs(scanAllFruits()) do
-        if string.lower(info.name) == string.lower(fruitName) then
-            local part = info.ref
-            if part and part:IsA("BasePart") then
-                local bb = Instance.new("BillboardGui")
-                bb.Name = "FruitESP"
-                bb.AlwaysOnTop = true
-                bb.Size = UDim2.new(0,120,0,36)
-                bb.Adornee = part
-                bb.Parent = menuGui
-                local txt = Instance.new("TextLabel", bb)
-                txt.BackgroundTransparency = 1
-                txt.Size = UDim2.new(1,0,1,0)
-                txt.Text = "🍎 " .. info.name
-                txt.TextColor3 = Color3.new(1,1,0.2)
-                txt.TextStrokeTransparency = 0.1
-                txt.Font = Enum.Font.GothamBold
-                txt.TextScaled = true
-                table.insert(allBillboards,bb)
-            end
-        end
+        end)
     end
 end
 
-------------------------------------------------------------------------
--- TP & Pickup
+----------------------------------------------------------------------------
+
+function setFruitESP(fruitName)
+    eraseBillboards()
+    if not fruitName then return end
+    local found = false
+    local fruits = scanAllFruits()
+    for _, info in ipairs(fruits) do
+        if string.lower(info.name) == string.lower(fruitName) and info.ref and info.ref:IsA("BasePart") then
+            found = true
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "FruitESP"
+            bb.AlwaysOnTop = true
+            bb.Size = UDim2.new(0,140,0,36)
+            bb.Adornee = info.ref
+            bb.Parent = menuGui
+            local txt = Instance.new("TextLabel", bb)
+            txt.BackgroundTransparency = 1
+            txt.Size = UDim2.new(1,0,1,0)
+            txt.Text = "🍏 "..info.name
+            txt.TextColor3 = Color3.new(0.9,1,0.45)
+            txt.TextStrokeTransparency = 0.1
+            txt.Font = Enum.Font.GothamBlack
+            txt.TextScaled = true
+            table.insert(allBillboards, bb)
+        end
+    end
+    if not found then
+        pcall(function()
+            game.StarterGui:SetCore("SendNotification", {Title="Meyve", Text="Meyve bulunamadı!", Duration=2})
+        end)
+    end
+end
+
+----------------------------------------------------------------------------
+
 function tpToFruitAndPickup(fruitName)
+    if not fruitName then return end
     local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") or not fruitName then return end
-    local closest = nil
-    local dist = math.huge
-    for _,info in ipairs(scanAllFruits()) do
-        if string.lower(info.name) == string.lower(fruitName) then
-            if info.ref and info.ref:IsA("BasePart") then
-                local d = (info.ref.Position-char.HumanoidRootPart.Position).Magnitude
-                if d < dist then closest = info.ref; dist = d end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local closest, dist = nil, math.huge
+    local fruits = scanAllFruits()
+    for _, info in ipairs(fruits) do
+        if string.lower(info.name) == string.lower(fruitName) and info.ref and info.ref:IsA("BasePart") then
+            local d = (info.ref.Position - char.HumanoidRootPart.Position).Magnitude
+            if d < dist then
+                closest = info.ref
+                dist = d
             end
         end
     end
     if not closest then
         pcall(function()
-            game.StarterGui:SetCore("SendNotification", {Title="Meyve",Text="Meyve bulunamadı!",Duration=3})
+            game.StarterGui:SetCore("SendNotification", {Title="Meyve",Text="Meyve bulunamadı!",Duration=2})
         end)
         return
     end
-    for i=1,12 do
-        char.HumanoidRootPart.CFrame = CFrame.new(closest.Position + Vector3.new(0,2,0))
-        wait(0.08)
+    for i=1,16 do
+        char.HumanoidRootPart.CFrame = CFrame.new(closest.Position + Vector3.new(0,4,0))
+        RunService.RenderStepped:Wait()
     end
+    wait(0.11)
     pcall(function()
-        firetouchinterest(char.HumanoidRootPart, closest, 0)
-        wait(0.10)
-        firetouchinterest(char.HumanoidRootPart, closest, 1)
+        if firetouchinterest then
+            firetouchinterest(char.HumanoidRootPart, closest, 0)
+            wait(0.06)
+            firetouchinterest(char.HumanoidRootPart, closest, 1)
+        elseif fireTouchInterest then
+            fireTouchInterest(char.HumanoidRootPart, closest, 0)
+            wait(0.06)
+            fireTouchInterest(char.HumanoidRootPart, closest, 1)
+        end
     end)
     pcall(function()
         game.StarterGui:SetCore("SendNotification", {Title="Meyve",Text=fruitName.." alınmış olabilir!",Duration=2})
     end)
 end
 
-------------------------------------------------------------------------
--- GUI HANDLING
+--------------------------------------------------------------------------------
 local function destroyMenuGui()
-    if menuGui and typeof(menuGui.Destroy)=='function' then pcall(function() menuGui:Destroy() end) end
+    pcall(function() eraseBillboards() end)
+    if flyConn then flyConn:Disconnect() flyConn=nil end
+    if noclipConn then noclipConn:Disconnect() noclipConn=nil end
+    if menuGui and typeof(menuGui.Destroy)=='function' then
+        pcall(function() menuGui:Destroy() end)
+    end
     menuGui = nil
-    eraseBillboards()
-    if flyConn then flyConn:Disconnect(); flyConn = nil end
-    if noclipConn then noclipConn:Disconnect(); noclipConn = nil end
 end
 
 local function parentGui(g)
     local ok = false
-    pcall(function() g.Parent = CoreGui if g.Parent==CoreGui then ok=true end end)
+    pcall(function() g.Parent = CoreGui if g.Parent == CoreGui then ok = true end end)
     if not ok then pcall(function()
         local pg = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
         g.Parent = pg
@@ -198,56 +226,53 @@ end
 
 local function redrawMenu()
     destroyMenuGui()
-
-    -- MAIN GUI
     menuGui = Instance.new("ScreenGui")
     menuGui.Name = GUI_NAME
-    menuGui.DisplayOrder = 10000
+    menuGui.DisplayOrder = 99999
     menuGui.ResetOnSpawn = false
     parentGui(menuGui)
-
     local mainFrame = Instance.new("Frame", menuGui)
     mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0,460,0,580)
-    mainFrame.Position = UDim2.new(0,100,0,85)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(26,29,41)
+    mainFrame.Size = UDim2.new(0, 490, 0, 630)
+    mainFrame.Position = UDim2.new(0, 120, 0, 95)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(29, 33, 42)
     mainFrame.Active, mainFrame.Draggable = true, true
     mainFrame.BorderSizePixel = 0
 
-    -- Menu title
+    -- Top Bar
     local head = Instance.new("TextLabel", mainFrame)
-    head.Size = UDim2.new(1,0,0,53)
+    head.Size = UDim2.new(1, 0, 0, 56)
     head.Text = "visitingmenu"
     head.Font = Enum.Font.GothamBlack
-    head.TextSize = 32
-    head.TextStrokeTransparency = 0.8
-    head.TextColor3 = Color3.fromRGB(235,213,65)
-    head.BackgroundColor3 = Color3.fromRGB(37,37,61)
+    head.TextSize = 34
+    head.TextStrokeTransparency = 0.85
+    head.TextColor3 = Color3.fromRGB(232, 220, 48)
+    head.BackgroundColor3 = Color3.fromRGB(42, 40, 61)
     head.BackgroundTransparency = 0
     head.BorderSizePixel = 0
 
     local close = Instance.new("TextButton", mainFrame)
     close.Text = "X"
-    close.Size = UDim2.new(0,44,0,44)
-    close.Position = UDim2.new(1,-54,0,5)
+    close.Size = UDim2.new(0, 44, 0, 44)
+    close.Position = UDim2.new(1, -54, 0, 6)
     close.Font = Enum.Font.GothamBlack
-    close.TextSize = 26
-    close.TextColor3 = Color3.fromRGB(240,80,97)
-    close.BackgroundColor3 = Color3.fromRGB(70,40,54)
+    close.TextSize = 25
+    close.TextColor3 = Color3.fromRGB(240, 80, 97)
+    close.BackgroundColor3 = Color3.fromRGB(70, 40, 54)
     close.BorderSizePixel = 0
     close.MouseButton1Click:Connect(function() destroyMenuGui() end)
 
-    local y = 60
-    local btnH = 46
+    local y = 62
+    local btnH = 48
 
     -- FLY
     local flyBtn = Instance.new("TextButton", mainFrame)
-    flyBtn.Size = UDim2.new(0.48,0,0,btnH)
+    flyBtn.Size = UDim2.new(0.48, -8, 0, btnH)
     flyBtn.Position = UDim2.new(0.03,0,0,y)
-    flyBtn.Text = guiToggleState.Fly and "✔️ Fly (Açık)" or "❌ Fly (Kapalı)"
+    flyBtn.Text = guiToggleState.Fly and "✔️ Fly (AKTİF)" or "❌ Fly (PASİF)"
     flyBtn.Font = Enum.Font.GothamBold
-    flyBtn.TextColor3 = guiToggleState.Fly and Color3.fromRGB(112,244,100) or Color3.fromRGB(215,215,215)
-    flyBtn.BackgroundColor3 = guiToggleState.Fly and Color3.fromRGB(38,60,44) or Color3.fromRGB(39,37,41)
+    flyBtn.TextColor3 = guiToggleState.Fly and Color3.fromRGB(65, 235, 104) or Color3.fromRGB(205, 220, 215)
+    flyBtn.BackgroundColor3 = guiToggleState.Fly and Color3.fromRGB(44, 68, 56) or Color3.fromRGB(52,47,51)
     flyBtn.BorderSizePixel = 0
     flyBtn.MouseButton1Click:Connect(function()
         setFly(not guiToggleState.Fly)
@@ -256,115 +281,117 @@ local function redrawMenu()
 
     -- NOCLIP
     local noclipBtn = Instance.new("TextButton", mainFrame)
-    noclipBtn.Size = UDim2.new(0.48,0,0,btnH)
-    noclipBtn.Position = UDim2.new(0.51,0,0,y)
-    noclipBtn.Text = guiToggleState.Noclip and "✔️ Noclip (Açık)" or "❌ Noclip (Kapalı)"
+    noclipBtn.Size = UDim2.new(0.48, -8, 0, btnH)
+    noclipBtn.Position = UDim2.new(0.49,0,0,y)
+    noclipBtn.Text = guiToggleState.Noclip and "✔️ Noclip (AKTİF)" or "❌ Noclip (PASİF)"
     noclipBtn.Font = Enum.Font.GothamBold
-    noclipBtn.TextColor3 = guiToggleState.Noclip and Color3.fromRGB(110,194,255) or Color3.fromRGB(210,210,210)
-    noclipBtn.BackgroundColor3 = guiToggleState.Noclip and Color3.fromRGB(35,45,70) or Color3.fromRGB(41,39,41)
+    noclipBtn.TextColor3 = guiToggleState.Noclip and Color3.fromRGB(90, 180, 255) or Color3.fromRGB(205, 215, 215)
+    noclipBtn.BackgroundColor3 = guiToggleState.Noclip and Color3.fromRGB(42, 70, 96) or Color3.fromRGB(49,39,46)
     noclipBtn.BorderSizePixel = 0
     noclipBtn.MouseButton1Click:Connect(function()
         setNoclip(not guiToggleState.Noclip)
         redrawMenu()
     end)
 
-    -- Fruit picker title
+    -- Fruit picker label
+    y = y + btnH + 16
     local fruitLabel = Instance.new("TextLabel", mainFrame)
-    fruitLabel.Size = UDim2.new(0,138,0,btnH)
-    fruitLabel.Position = UDim2.new(0,14,0,y+btnH+12)
+    fruitLabel.Size = UDim2.new(0, 148, 0, btnH-6)
+    fruitLabel.Position = UDim2.new(0, 15, 0, y)
     fruitLabel.Text = "Meyve Seçiniz:"
     fruitLabel.Font = Enum.Font.GothamBold
-    fruitLabel.TextSize = 20
-    fruitLabel.TextColor3 = Color3.fromRGB(255,255,195)
+    fruitLabel.TextSize = 21
+    fruitLabel.TextColor3 = Color3.fromRGB(235,245,225)
     fruitLabel.BackgroundTransparency = 1
 
-    -- Build list of all found/candidate fruits and visible names
-    local actualMapFruits = scanAllFruits()
+    -- Full visible fruit dropdown
     local uniqueFruits, seen = {}, {}
-    for _, obj in ipairs(actualMapFruits) do if not seen[obj.name] then seen[obj.name]=true; table.insert(uniqueFruits,obj.name) end end
+    local mapFruits = scanAllFruits()
+    for _, obj in ipairs(mapFruits) do if not seen[obj.name] then seen[obj.name]=true; table.insert(uniqueFruits,obj.name) end end
     for _, f in ipairs(BloxFruits) do if not seen[f] then table.insert(uniqueFruits,f) seen[f]=true end end
 
-    -- Dropdown (VISIBLE! with fruit names always)
+    -- Dropdown frame showing fruit names!
     local fruitDrop = Instance.new("Frame", mainFrame)
-    fruitDrop.Size = UDim2.new(0,222,0,btnH)
-    fruitDrop.Position = UDim2.new(0,130,0,y+btnH+12)
-    fruitDrop.BackgroundColor3 = Color3.fromRGB(41,45,60)
+    fruitDrop.Size = UDim2.new(0, 240, 0, btnH-6)
+    fruitDrop.Position = UDim2.new(0, 150, 0, y)
+    fruitDrop.BackgroundColor3 = Color3.fromRGB(44,56,62)
     fruitDrop.BorderSizePixel = 0
     fruitDrop.ClipsDescendants = true
 
-    local selFruit = selectedFruit or "Meyve Seçiniz"
+    local selFruit = selectedFruit or "Bir Meyve Seçin"
     local currBtn = Instance.new("TextButton", fruitDrop)
-    currBtn.Size = UDim2.new(1,0,1,0)
+    currBtn.Size = UDim2.new(1, 0, 1, 0)
     currBtn.Text = selFruit
-    currBtn.TextColor3 = Color3.fromRGB(220,234,250)
+    currBtn.TextColor3 = Color3.fromRGB(238,234,250)
     currBtn.Font = Enum.Font.GothamBold
     currBtn.TextScaled = true
     currBtn.BackgroundTransparency = 1
 
     local dropFrame = Instance.new("ScrollingFrame", fruitDrop)
-    dropFrame.Size = UDim2.new(1,0,0,math.clamp(#uniqueFruits,1,11)*29)
+    dropFrame.Size = UDim2.new(1, 0, 0, math.clamp(#uniqueFruits, 1, 12)*28)
     dropFrame.Position = UDim2.new(0,0,1,1)
-    dropFrame.BackgroundColor3 = Color3.fromRGB(30,32,54)
+    dropFrame.BackgroundColor3 = Color3.fromRGB(36,41,66)
     dropFrame.BorderSizePixel = 0
-    dropFrame.CanvasSize = UDim2.new(0,0,0,#uniqueFruits*29)
+    dropFrame.CanvasSize = UDim2.new(0,0,0,#uniqueFruits*28)
     dropFrame.Visible = false
     dropFrame.ZIndex = 10
     local layout = Instance.new("UIListLayout", dropFrame)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    for _,fruit in ipairs(uniqueFruits) do
+    for _,fruitname in ipairs(uniqueFruits) do
         local btn = Instance.new("TextButton", dropFrame)
-        btn.Text = fruit
-        btn.Size = UDim2.new(1,0,0,28)
-        btn.TextColor3 = Color3.fromRGB(244,241,205)
+        btn.Text = fruitname
+        btn.Size = UDim2.new(1,0,0,27)
+        btn.TextColor3 = Color3.fromRGB(235,255,220)
         btn.Font = Enum.Font.Gotham
-        btn.TextSize = 17
-        btn.BackgroundColor3 = Color3.fromRGB(43,47,78)
-        btn.BackgroundTransparency = 0
+        btn.TextSize = 18
+        btn.BackgroundColor3 = Color3.fromRGB(46,59,83)
         btn.BorderSizePixel = 0
+        btn.AutoButtonColor = true
         btn.MouseButton1Click:Connect(function()
-            selectedFruit = fruit
-            dropFrame.Visible = false
+            selectedFruit = fruitname
             fruitDropdownOpen = false
+            dropFrame.Visible = false
             redrawMenu()
         end)
     end
 
     currBtn.MouseButton1Click:Connect(function()
-        dropFrame.Visible = not dropFrame.Visible
-        fruitDropdownOpen = dropFrame.Visible
+        fruitDropdownOpen = not fruitDropdownOpen
+        dropFrame.Visible = fruitDropdownOpen
     end)
 
-    -- ESP toggle
+    -- ESP button
+    y = y + btnH + 20
     local espBtn = Instance.new("TextButton", mainFrame)
     espBtn.Size = UDim2.new(0.92,0,0,btnH)
-    espBtn.Position = UDim2.new(0.04,0,0,y+2*btnH+26)
-    espBtn.Text = "Seçili Meyveyi Mapte Göster (ESP)"
+    espBtn.Position = UDim2.new(0.04,0,0,y)
+    espBtn.Text = "Seçili Meyveyi ESP ile Göster"
     espBtn.Font = Enum.Font.GothamBold
-    espBtn.TextSize = 19
-    espBtn.TextColor3 = Color3.fromRGB(49,255,112)
-    espBtn.BackgroundColor3 = Color3.fromRGB(43,46,52)
+    espBtn.TextSize = 20
+    espBtn.TextColor3 = Color3.fromRGB(52, 255, 134)
+    espBtn.BackgroundColor3 = Color3.fromRGB(43,46,57)
     espBtn.BorderSizePixel = 0
     espBtn.MouseButton1Click:Connect(function()
         setFruitESP(selectedFruit)
     end)
 
-    -- Fruit TP & Pickup
+    -- TP and pickup button
+    y = y + btnH + 14
     local tpBtn = Instance.new("TextButton", mainFrame)
     tpBtn.Size = UDim2.new(0.92,0,0,btnH)
-    tpBtn.Position = UDim2.new(0.04,0,0,y+3*btnH+35)
-    tpBtn.Text = "Meyveye TP ve Al"
+    tpBtn.Position = UDim2.new(0.04,0,0,y)
+    tpBtn.Text = "Meyveye Işınlan ve Al"
     tpBtn.Font = Enum.Font.GothamBold
-    tpBtn.TextSize = 18
-    tpBtn.TextColor3 = Color3.fromRGB(145,212,255)
-    tpBtn.BackgroundColor3 = Color3.fromRGB(63,68,93)
+    tpBtn.TextSize = 20
+    tpBtn.TextColor3 = Color3.fromRGB(111,192,255)
+    tpBtn.BackgroundColor3 = Color3.fromRGB(54,59,88)
     tpBtn.BorderSizePixel = 0
     tpBtn.MouseButton1Click:Connect(function()
         tpToFruitAndPickup(selectedFruit)
     end)
 end
 
------------------------------------------
--- Hotkey logic for menu
+-----------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.UserInputType == Enum.UserInputType.Keyboard and (
@@ -380,13 +407,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
--- Robust menu spawning on load!
-local function tryShowMenu(attempt)
+local function autoMenuTry(attempt)
     attempt = (attempt or 0) + 1
     redrawMenu()
-    if (not menuGui or not menuGui.Parent) and attempt < 5 then
-        wait(0.5)
-        tryShowMenu(attempt)
+    if (not menuGui or not menuGui.Parent) and attempt < 7 then
+        wait(0.4)
+        autoMenuTry(attempt)
     end
 end
-tryShowMenu()
+autoMenuTry()
