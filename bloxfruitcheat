@@ -275,3 +275,260 @@ local function enableNoclip(enable)
         Noclipping = false
         for _,conn in pairs(conns) do pcall(function() conn:Disconnect() end) end
         conns = {}
+        if LocalPlayer.Character then
+            for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = true end
+            end
+        end
+        notify("Noclip Kapalı.")
+    end
+end
+
+-- ESP & Fruit TP
+local ESPObjects = {}
+local function updateFruitESP(show, fruitName)
+    -- Clear ESP objects before
+    for _,obj in pairs(ESPObjects) do
+        if obj then pcall(function() obj:Remove() end) end
+    end
+    ESPObjects = {}
+    if not show or not fruitName then return end
+    local fruits = findAllFruitsByName(fruitName)
+    for _,fruit in ipairs(fruits) do
+        if fruit.Handle then
+            local box = Drawing and Drawing.new and Drawing.new("Quad")
+            if not box then continue end
+            box.Thickness = 2
+            box.Color = Color3.fromRGB(185,255,0)
+            box.Transparency = 0.7
+            box.Filled = false
+            box.Visible = true
+            table.insert(conns, RunService.RenderStepped:Connect(function()
+                if fruit and fruit.Parent and fruit.Handle then
+                    local cf, sz = fruit.Handle.CFrame, fruit.Handle.Size
+                    local pts = {
+                        Camera:WorldToViewportPoint((cf * CFrame.new(-sz.X/2, -sz.Y/2, -sz.Z/2)).p),
+                        Camera:WorldToViewportPoint((cf * CFrame.new(-sz.X/2, sz.Y/2, -sz.Z/2)).p),
+                        Camera:WorldToViewportPoint((cf * CFrame.new(sz.X/2, sz.Y/2, -sz.Z/2)).p),
+                        Camera:WorldToViewportPoint((cf * CFrame.new(sz.X/2, -sz.Y/2, -sz.Z/2)).p)
+                    }
+                    for i=1,4 do box["Point"..i] = Vector2.new(pts[i].X, pts[i].Y) end
+                    box.Visible = true
+                    if not fruit or not fruit.Parent then box.Visible = false end
+                else
+                    box.Visible = false
+                end
+            end))
+            table.insert(ESPObjects, box)
+        end
+    end
+    notify(#fruits>0 and fruitName.." ESP açıldı!" or ("Sunucuda "..fruitName.." yok."))
+end
+
+local function teleportAndGrabFruit(fruitName)
+    local fruits = findAllFruitsByName(fruitName)
+    if #fruits == 0 then
+        notify("Sunucuda "..fruitName.." yok!")
+        return
+    end
+    local fruit = fruits[1]
+    if not fruit.Handle then
+        notify("Fruit nesnesi yok!")
+        return
+    end
+    -- Teleport
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then notify("Karakter hatası!"); return end
+    hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,3,0)
+    wait(0.5)
+    -- "Alma" process -- try ProximityPrompt or Touch
+    local picked = false
+    if fruit:FindFirstChildWhichIsA("ProximityPrompt",true) then
+        local prompt = fruit:FindFirstChildWhichIsA("ProximityPrompt",true)
+        fireproximityprompt = fireproximityprompt or getgenv().fireproximityprompt or function(obj)
+            for i=1,3 do
+                pcall(function() firetouchinterest(hrp, fruit.Handle, 0) end)
+                wait()
+            end
+        end
+        pcall(function() fireproximityprompt(prompt) end)
+        picked = true
+    elseif typeof(firetouchinterest) == "function" then
+        pcall(function() firetouchinterest(hrp, fruit.Handle, 0) end)
+        wait(0.15)
+        pcall(function() firetouchinterest(hrp, fruit.Handle, 1) end)
+        picked = true
+    else
+        for i=1,20 do
+            if (fruit.Handle.Position - hrp.Position).magnitude < 10 then
+                hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,1,0)
+            end
+            wait(0.07)
+        end
+        picked = true
+    end
+    wait(0.6)
+    if picked and (not fruit.Parent or not fruit:IsDescendantOf(Workspace)) then
+        notify(fruitName .. " alındı!")
+    else
+        notify("Fruit alınamadı!")
+    end
+end
+
+---------------- GUI PART ----------------
+for _,v in pairs(CoreGui:GetChildren()) do
+    if v.Name == "visitingmenu" then v:Destroy() end
+end
+local visitingmenu = Instance.new("ScreenGui")
+visitingmenu.Name = "visitingmenu"
+visitingmenu.ZIndexBehavior = Enum.ZIndexBehavior.Global
+visitingmenu.Parent = CoreGui
+table.insert(guis, visitingmenu)
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0,380,0,420)
+frame.Position = UDim2.new(0.5,-180,0.35,-180)
+frame.BackgroundColor3 = Color3.fromRGB(30,35,80)
+frame.BackgroundTransparency = 0.12
+frame.BorderSizePixel = 0
+frame.Parent = visitingmenu
+roundify(frame, 16)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,0,0,48)
+title.Position = UDim2.new(0,0,0,0)
+title.Text = "visitingmenu"
+title.Font = Enum.Font.FredokaOne
+title.TextColor3 = Color3.fromRGB(255,236,95)
+title.TextSize = 34
+title.TextStrokeTransparency = 0.8
+title.BackgroundTransparency = 1
+title.Parent = frame
+
+makeDraggable(frame)
+
+local sep = Instance.new("Frame")
+sep.Size = UDim2.new(1, -24, 0,2)
+sep.Position = UDim2.new(0,12,0,46)
+sep.BackgroundColor3 = Color3.fromRGB(85, 96, 120)
+sep.BackgroundTransparency = 0.2
+sep.Parent = frame
+
+--- buttons/labels
+local btnY = 58
+local function addBtn(text, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9,0,0,38)
+    btn.Position = UDim2.new(0.05,0,0,btnY)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 20
+    btn.TextColor3 = Color3.fromRGB(243, 239, 177)
+    btn.BackgroundColor3 = Color3.fromRGB(50,65,120)
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = true
+    roundify(btn, 13)
+    btn.Parent = frame
+    btn.MouseButton1Click:Connect(callback)
+    btnY = btnY + 47
+    return btn
+end
+
+local flyBox = addBtn("[Fly] Aç/Kapat", function()
+    enableFly(not Flying)
+end)
+local noclipBox = addBtn("[Noclip] Aç/Kapat", function()
+    enableNoclip(not Noclipping)
+end)
+
+-- Fruit Picker
+local fruitLabel = Instance.new("TextLabel")
+fruitLabel.Text = "Meyve Seç:"
+fruitLabel.Size = UDim2.new(0,100,0,30)
+fruitLabel.Position = UDim2.new(0.05,0,0,btnY)
+fruitLabel.Font = Enum.Font.GothamSemibold
+fruitLabel.TextSize = 17
+fruitLabel.TextColor3 = Color3.fromRGB(243,243,210)
+fruitLabel.BackgroundTransparency = 1
+fruitLabel.Parent = frame
+
+local selectedFruitLbl = Instance.new("TextLabel")
+selectedFruitLbl.Text = "<seçili yok>"
+selectedFruitLbl.Size = UDim2.new(0,150,0,30)
+selectedFruitLbl.Position = UDim2.new(0.34,0,0,btnY)
+selectedFruitLbl.Font = Enum.Font.GothamBold
+selectedFruitLbl.TextSize = 17
+selectedFruitLbl.TextColor3 = Color3.fromRGB(130,210,255)
+selectedFruitLbl.BackgroundTransparency = 1
+selectedFruitLbl.Parent = frame
+
+btnY = btnY + 36
+
+local fruitDropFrame = Instance.new("ScrollingFrame")
+fruitDropFrame.Size = UDim2.new(0.88,0,0,90)
+fruitDropFrame.Position = UDim2.new(0.06,0,0,btnY)
+fruitDropFrame.BackgroundColor3 = Color3.fromRGB(40,49,95)
+fruitDropFrame.BackgroundTransparency = 0.12
+fruitDropFrame.ScrollBarThickness = 6
+fruitDropFrame.BorderSizePixel = 0
+fruitDropFrame.CanvasSize = UDim2.new(0,0,5,0)
+fruitDropFrame.Parent = frame
+roundify(fruitDropFrame, 10)
+
+btnY = btnY + 96
+
+refreshFruitDropdown(fruitDropFrame, function(fruit)
+    SelectedFruit = fruit
+    selectedFruitLbl.Text = fruit
+end)
+
+fruitDropFrame.MouseEnter:Connect(function()
+    refreshFruitDropdown(fruitDropFrame, function(fruit)
+        SelectedFruit = fruit
+        selectedFruitLbl.Text = fruit
+    end)
+end)
+-- Her tıklamada da güncelle ki oyunda yeni meyve gelirse gözükür!
+fruitDropFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        refreshFruitDropdown(fruitDropFrame, function(fruit)
+            SelectedFruit = fruit
+            selectedFruitLbl.Text = fruit
+        end)
+    end
+end)
+
+local espBtn = addBtn("Seçili Meyveyi Haritada Göster (ESP)", function()
+    ESPActive = not ESPActive
+    updateFruitESP(ESPActive, SelectedFruit)
+    espBtn.Text = ESPActive and "ESP: AÇIK [Kapatmak İçin Tıkla]" or "Seçili Meyveyi Haritada Göster (ESP)"
+end)
+
+local tpBtn = addBtn("Seçili Meyveye Işınlan ve AL", function()
+    if not SelectedFruit then 
+        notify("Önce bir meyve seç.")
+        return
+    end
+    teleportAndGrabFruit(SelectedFruit)
+end)
+
+local credits = Instance.new("TextLabel")
+credits.Text = "made by visiting (Cursor x OpenAI demo)"
+credits.Size = UDim2.new(1,0,0,30)
+credits.Position = UDim2.new(0,0,1,-34)
+credits.Font = Enum.Font.Gotham
+credits.TextColor3 = Color3.fromRGB(180,240,255)
+credits.BackgroundTransparency = 1
+credits.TextScaled = false
+credits.TextSize = 15
+credits.Parent = frame
+
+-- MENU Hotkey
+UserInputService.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.F4 or input.KeyCode == Enum.KeyCode.Insert then
+        visitingmenu.Enabled = not visitingmenu.Enabled
+    end
+end)
+
+notify("visitingmenu yüklendi! F4/Insert/RightCtrl ile aç/kapat.")
