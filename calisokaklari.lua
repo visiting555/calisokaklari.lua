@@ -24,10 +24,50 @@ local fruitEspBillboards = {}
 local flyConn, noclipConn = nil, nil
 local flying, noclipping = false, false
 
-local availableFruits = {
-    "Kitsune", "Dough", "Leopard", "Dragon", "Venom",
-    "Spirit", "Magma", "Light", "Dark", "Flame"
-}
+------------------------------------------------
+-- DİNAMİK MEYVE ADI ÇEKİCİ
+local function getFruitsOnMap()
+    local results = {}
+    local already = {}
+    -- Blox Fruits'te meyveler genellikle Workspace/ veya Workspace'deki belirli childlarda (ör: "Fruit") olur.
+    -- Tüm Workspace'teki adı meyveye benzeyen Tool'ları, MeshPart/Part'ların adlarını topla
+    for _,obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("Tool") or obj:IsA("Model") or obj:IsA("Part") or obj:IsA("MeshPart") then
+            local n = tostring(obj.Name)
+            -- Blox Fruits'teki gerçek meyvelerin adı çoğunlukla "Something Fruit"
+            if n:lower():find("fruit") or true then
+                -- Not: true dedik, tüm objelerde isim meyveye benziyorsa göster
+                if not already[n] then
+                    table.insert(results, n)
+                    already[n]=true
+                end
+            end
+        end
+        if obj:IsA("Folder") or obj:IsA("Model") then
+            -- Tool içeren Folder (ör: "Fruit") varsa orada da ara
+            for _,item in ipairs(obj:GetDescendants()) do
+                if item:IsA("Tool") or item:IsA("Model") or item:IsA("Part") or item:IsA("MeshPart") then
+                    local n = tostring(item.Name)
+                    if n:lower():find("fruit") or true then
+                        if not already[n] then
+                            table.insert(results, n)
+                            already[n]=true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    -- Statik toplama fallback (hiçbiri bulunmazsa default liste ata)
+    if #results == 0 then
+        results = {
+            "Kitsune", "Leopard", "Dragon", "Venom",
+            "Dough", "Spirit", "Magma", "Light", "Dark", "Flame"
+        }
+    end
+    table.sort(results)
+    return results
+end
 
 -- DEVAMLI GUI SİLME KONTROLÜ (CoreGui ve PlayerGui için!)
 pcall(function()
@@ -132,6 +172,9 @@ local function createMenu()
     addToggle("Noclip", "Noclip", y, function(val) setNoclip(val) end)
     y = y + btnH + padding
 
+    -- MEYVE LİSTESİ DİNAMİK GELİYOR
+    local dynamicFruits = getFruitsOnMap()
+
     -- Meyve seçme:
     local fruitLbl = Instance.new("TextLabel")
     fruitLbl.Text = "Meyve Seç: "
@@ -146,7 +189,7 @@ local function createMenu()
     local fruitDropdown = Instance.new("TextButton")
     fruitDropdown.Size = UDim2.new(0,220,0,btnH)
     fruitDropdown.Position = UDim2.new(0,98,0,y)
-    fruitDropdown.Text = fruitEspSelection or "Meyve seçin..."
+    fruitDropdown.Text = fruitEspSelection or (dynamicFruits[1] or "Meyve yok")
     fruitDropdown.Font = Enum.Font.Gotham
     fruitDropdown.TextColor3 = Color3.fromRGB(240,240,240)
     fruitDropdown.BackgroundColor3 = Color3.fromRGB(39,41,50)
@@ -155,16 +198,17 @@ local function createMenu()
     local dropdownOpen = false
     local fruitListFrame = Instance.new("ScrollingFrame")
     fruitListFrame.Parent = frame
-    fruitListFrame.Size = UDim2.new(0,220,0, 145)
+    fruitListFrame.Size = UDim2.new(0,220,0, math.min(#dynamicFruits,7)*32+2)
     fruitListFrame.Position = fruitDropdown.Position + UDim2.new(0,0,0,btnH+2)
-    fruitListFrame.CanvasSize = UDim2.new(0,0,0,#availableFruits*32)
+    fruitListFrame.CanvasSize = UDim2.new(0,0,0,#dynamicFruits*32)
     fruitListFrame.BackgroundColor3 = Color3.fromRGB(34,34,48)
     fruitListFrame.Visible = false
     fruitListFrame.ZIndex = 2
     fruitListFrame.BorderSizePixel = 0
     fruitListFrame.ScrollBarThickness = 6
 
-    for i,fruit in pairs(availableFruits) do
+    -- DİNAMİK MEYVE BUTTON EKLEME
+    for i,fruit in pairs(dynamicFruits) do
         local fbtn = Instance.new("TextButton")
         fbtn.Size = UDim2.new(1,0,0,32)
         fbtn.Position = UDim2.new(0, 0, 0, (i-1)*32)
@@ -174,6 +218,7 @@ local function createMenu()
         fbtn.BackgroundColor3 = Color3.fromRGB(55,55,60)
         fbtn.TextColor3 = Color3.fromRGB(235,235,170)
         fbtn.Parent = fruitListFrame
+        fbtn.AutoButtonColor = true
         fbtn.MouseButton1Click:Connect(function()
             fruitEspSelection = fruit
             dropdownOpen = false
@@ -187,7 +232,7 @@ local function createMenu()
         fruitListFrame.Visible = dropdownOpen
     end)
 
-    y = y + btnH + 150
+    y = y + btnH + (#dynamicFruits > 7 and 220 or 150)
 
     -- ESP Butonu
     local fruitEspBtn = Instance.new("TextButton")
@@ -297,7 +342,7 @@ function setFruitESP(on)
     if not on or not fruitEspSelection then return end
     for _,obj in pairs(Workspace:GetDescendants()) do
         local name = tostring(obj.Name or "")
-        if string.lower(name):find(string.lower(fruitEspSelection)) then
+        if string.lower(name) == string.lower(fruitEspSelection) then
             local handle = obj:FindFirstChild("Handle") or (obj:IsA("Tool") and obj:FindFirstChildOfClass("Part"))
             if handle then
                 local bill = Instance.new("BillboardGui", menuGui)
@@ -333,7 +378,7 @@ function tpToFruitAndPickup()
     local pos, target = nil, nil
     for _,obj in pairs(Workspace:GetDescendants()) do
         local name = tostring(obj.Name or "")
-        if fruitEspSelection and string.lower(name):find(string.lower(fruitEspSelection)) then
+        if fruitEspSelection and string.lower(name) == string.lower(fruitEspSelection) then
             local h = obj:FindFirstChild("Handle") or (obj:IsA("Tool") and obj:FindFirstChildOfClass("Part"))
             if h then
                 local dist = (char.HumanoidRootPart.Position-h.Position).Magnitude
