@@ -1,11 +1,10 @@
 --[[
-Blox Fruits Pro GUI Script (v2.1)
+Blox Fruits Pro GUI Script (v2)
 • FLY (Kendi kontrolünle özgürce hareket! WASD yukarı/ileri, Mouse yön verir, Space zıplatır.)
 • NOCLIP (bina/duvardan kolay geçiş)
 • Meyve seçme alanında, sunucuda olan meyvelerin yanında "(+n)" olarak kaç tane varsa yazar!
 • "Yerini Göster" = ESP ile haritadaki seçilen meyveyi göster (aktif/gizle)
 • "Tıkla-Teleport & Topla" = Seçilen meyveye ışınga + anında al (eğer alınamazsa bildirim verir)
-• SERVER HOP = Menü içerisindeki butonla doğrudan kişi sayısı en az olan başka bir sunucuya atlar!
 • Taşınabilir, yenilenmiş, havalı bir menü (Adı visitingmenu)
 • Tüm hata bildirimleri, boş fonksiyon yok, bug-free. Normal executor ile açılır/taşınır GARANTİ.
 --]]
@@ -20,21 +19,21 @@ local CoreGui = (pcall(function() return game:GetService("CoreGui") end) and gam
 
 -- Helper Functions
 local function notify(msg)
-    local scr = Instance.new("ScreenGui")
-    scr.Name = "visitingnotify"
-    scr.Parent = CoreGui
-    local t = Instance.new("TextLabel")
-    t.Size = UDim2.new(1,0,0,50)
-    t.Position = UDim2.new(0,0,0,0)
-    t.Text = msg
-    t.Font = Enum.Font.GothamBold
-    t.TextColor3 = Color3.fromRGB(255,255,255)
-    t.BackgroundColor3 = Color3.fromRGB(40,50,160)
-    t.BackgroundTransparency = 0.15
-    t.TextStrokeTransparency = 0.6
-    t.TextScaled = true
-    t.Parent = scr
-    delay(2,function() pcall(function() scr:Destroy() end) end)
+    local scr = Instance.new("ScreenGui")
+    scr.Name = "visitingnotify"
+    scr.Parent = CoreGui
+    local t = Instance.new("TextLabel")
+    t.Size = UDim2.new(1,0,0,50)
+    t.Position = UDim2.new(0,0,0,0)
+    t.Text = msg
+    t.Font = Enum.Font.GothamBold
+    t.TextColor3 = Color3.fromRGB(255,255,255)
+    t.BackgroundColor3 = Color3.fromRGB(40,50,160)
+    t.BackgroundTransparency = 0.15
+    t.TextStrokeTransparency = 0.6
+    t.TextScaled = true
+    t.Parent = scr
+    delay(2,function() pcall(function() scr:Destroy() end) end)
 end
 
 local conns, guis = {}, {}
@@ -42,187 +41,120 @@ local SelectedFruit = nil
 local ESPActive = false
 
 local FruitNames = {
-    "Kitsune",
-    "Dragon",
-    "Leopard",
-    "Dough",
-    "T-Rex",
-    "Mammoth",
-    "Gas",
-    "Spirit",
-    "Control",
-    "Venom",
-    "Shadow",
-    "Gravity",
-    "Buddha",
-    "Portal",
-    "Blizzard",
-    "Rumble",
-    "Yeti",
-    "Sound",
-    "Phoenix",
-    "Spider",
-    "Love",
-    "Pain"
+    "Kitsune", "Leopard", "Dough", "Dragon", "Venom", "Control", "Spirit", "Shadow", "Blizzard", "Magma", "Rubber", "Flame", "Ice", "Spike",
+    "Smoke", "Bomb", "Love", "Phoenix", "Portal", "Sand", "Dark", "Light", "Revive", "Diamond", "Ghost", "Chop", "Spring", "Barrier", "Quake",
+    "Buddha", "String", "Human: Buddha", "Gravity", "Paw", "Rumble"
 }
 
--- Server Hop (Sunucu Değiştirme) Fonksiyonu
-local function serverHop()
-    local HttpService = game:GetService("HttpService")
-    local TeleportService = game:GetService("TeleportService")
-    local PlaceId = game.PlaceId
-
-    local function getServers(cursor)
-        local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-        if cursor then
-            url = url .. "&cursor=" .. cursor
-        end
-        local suc, res = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(url))
-        end)
-        if suc and res then
-            return res
-        end
-        return nil
-    end
-
-    local myJobId = game.JobId
-    local minPlayersServer
-
-    local nextPage = nil
-    repeat
-        local servers = getServers(nextPage)
-        if servers then
-            for _,server in ipairs(servers.data) do
-                if server.playing < server.maxPlayers and server.id ~= myJobId then
-                    if not minPlayersServer or server.playing < minPlayersServer.playing then
-                        minPlayersServer = server
-                    end
-                end
-            end
-            nextPage = servers.nextPageCursor
-        else
-            nextPage = nil
-        end
-    until not nextPage or minPlayersServer
-
-    if minPlayersServer then
-        notify("Sunucudan çıkılıyor... (Az kişilik sunucu aranıyor)")
-        wait(1)
-        TeleportService:TeleportToPlaceInstance(PlaceId, minPlayersServer.id, LocalPlayer)
-    else
-        notify("Uygun sunucu bulunamadı!")
-    end
-end
-
 local function findAllFruitsByName(fruitName)
-    local found = {}
-    for _,obj in pairs(Workspace:GetChildren()) do
-        if obj:IsA("Tool") and obj.Name:lower():find("fruit") and obj.Handle and obj:FindFirstChild("FruitName") then
-            local fname = obj:FindFirstChild("FruitName").Value
-            if fname:lower():find(fruitName:lower()) then
-                table.insert(found, obj)
-            end
-        end
-    elseif obj:IsA("Tool") and obj.Name:lower():find(fruitName:lower()) then -- fallback
-        table.insert(found, obj)
-    end
-end
--- Also check FruitSpawn if exists
-if Workspace:FindFirstChild("FruitSpawn") then
-    for _,v in pairs(Workspace.FruitSpawn:GetChildren()) do
-        if v:IsA("Tool") and v:FindFirstChild("FruitName") and v.FruitName.Value:lower():find(fruitName:lower()) then
-            table.insert(found, v)
-        end
-    end
-end
-return found
+    local found = {}
+    for _,obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("Tool") and obj.Name:lower():find("fruit") and obj.Handle and obj:FindFirstChild("FruitName") then
+            local fname = obj:FindFirstChild("FruitName").Value
+            if fname:lower():find(fruitName:lower()) then
+                table.insert(found, obj)
+            end
+        elseif obj:IsA("Tool") and obj.Name:lower():find(fruitName:lower()) then -- fallback
+            table.insert(found, obj)
+        end
+    end
+    -- Also check FruitSpawn if exists
+    if Workspace:FindFirstChild("FruitSpawn") then
+        for _,v in pairs(Workspace.FruitSpawn:GetChildren()) do
+            if v:IsA("Tool") and v:FindFirstChild("FruitName") and v.FruitName.Value:lower():find(fruitName:lower()) then
+                table.insert(found, v)
+            end
+        end
+    end
+    return found
 end
 
 local function countServerFruits()
-    local tbl = {}
-    for _,fruit in ipairs(FruitNames) do tbl[fruit] = 0 end
-    for _,obj in pairs(Workspace:GetChildren()) do
-        if obj:IsA("Tool") and obj.Handle and obj:FindFirstChild("FruitName") then
-            local fname = obj.FruitName.Value
-            for _,iname in ipairs(FruitNames) do
-                if fname:lower():find(iname:lower()) then
-                    tbl[iname] = tbl[iname]+1
-                end
-            end
-        elseif obj:IsA("Tool") then
-            for _,iname in ipairs(FruitNames) do
-                if obj.Name:lower():find(iname:lower()) then
-                    tbl[iname] = tbl[iname]+1
-                end
-            end
-        end
-    end
-    if Workspace:FindFirstChild("FruitSpawn") then
-        for _,obj in pairs(Workspace.FruitSpawn:GetChildren()) do
-            if obj:IsA("Tool") and obj:FindFirstChild("FruitName") then
-                local fname = obj.FruitName.Value
-                for _,iname in ipairs(FruitNames) do
-                    if fname:lower():find(iname:lower()) then
-                        tbl[iname] = tbl[iname]+1
-                    end
-                end
-            end
-        end
-    end
-    return tbl
+    -- returns a dictionary: { ["Kitsune"]=2, ... }
+    local tbl = {}
+    for _,fruit in ipairs(FruitNames) do tbl[fruit] = 0 end
+    for _,obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("Tool") and obj.Handle and obj:FindFirstChild("FruitName") then
+            local fname = obj.FruitName.Value
+            for _,iname in ipairs(FruitNames) do
+                if fname:lower():find(iname:lower()) then
+                    tbl[iname] = tbl[iname]+1
+                end
+            end
+        elseif obj:IsA("Tool") then
+            for _,iname in ipairs(FruitNames) do
+                if obj.Name:lower():find(iname:lower()) then
+                    tbl[iname] = tbl[iname]+1
+                end
+            end
+        end
+    end
+    if Workspace:FindFirstChild("FruitSpawn") then
+        for _,obj in pairs(Workspace.FruitSpawn:GetChildren()) do
+            if obj:IsA("Tool") and obj:FindFirstChild("FruitName") then
+                local fname = obj.FruitName.Value
+                for _,iname in ipairs(FruitNames) do
+                    if fname:lower():find(iname:lower()) then
+                        tbl[iname] = tbl[iname]+1
+                    end
+                end
+            end
+        end
+    end
+    return tbl
 end
 
 local function refreshFruitDropdown(dropdownFrame, callback)
-    for _,c in pairs(dropdownFrame:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    local Y, fruitCounts = 0, countServerFruits()
-    for i,fruit in ipairs(FruitNames) do
-        local btn = Instance.new("TextButton")
-        local suffix = (fruitCounts[fruit] and fruitCounts[fruit]>0) and ("  (+"..fruitCounts[fruit]..")") or ""
-        btn.Text = fruit..suffix
-        btn.Size = UDim2.new(1,0,0,28)
-        btn.Position = UDim2.new(0,0,0,Y)
-        btn.BackgroundColor3 = Color3.fromRGB(37,37,60)
-        btn.TextColor3 = Color3.fromRGB(252,252,215)
-        btn.Font = Enum.Font.GothamSemibold
-        btn.TextSize = 16
-        btn.BorderSizePixel = 0
-        btn.Parent = dropdownFrame
-        btn.MouseButton1Click:Connect(function()
-            callback(fruit)
-        end)
-        Y = Y + 29
-    end
-    dropdownFrame.CanvasSize = UDim2.new(0,0,0,Y)
+    -- Clean up any existing
+    for _,c in pairs(dropdownFrame:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    local Y, fruitCounts = 0, countServerFruits()
+    for i,fruit in ipairs(FruitNames) do
+        local btn = Instance.new("TextButton")
+        local suffix = (fruitCounts[fruit] and fruitCounts[fruit]>0) and ("  (+"..fruitCounts[fruit]..")") or ""
+        btn.Text = fruit..suffix
+        btn.Size = UDim2.new(1,0,0,28)
+        btn.Position = UDim2.new(0,0,0,Y)
+        btn.BackgroundColor3 = Color3.fromRGB(37,37,60)
+        btn.TextColor3 = Color3.fromRGB(252,252,215)
+        btn.Font = Enum.Font.GothamSemibold
+        btn.TextSize = 16
+        btn.BorderSizePixel = 0
+        btn.Parent = dropdownFrame
+        btn.MouseButton1Click:Connect(function()
+            callback(fruit)
+        end)
+        Y = Y + 29
+    end
+    dropdownFrame.CanvasSize = UDim2.new(0,0,0,Y)
 end
 
 local function roundify(obj, amt)
-    local cor = Instance.new("UICorner")
-    cor.CornerRadius = UDim.new(0, amt or 10)
-    cor.Parent = obj
+    local cor = Instance.new("UICorner")
+    cor.CornerRadius = UDim.new(0, amt or 10)
+    cor.Parent = obj
 end
 
 -- Draggable GUI
 local function makeDraggable(frame)
-    local dragging, dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    frame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    frame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
 end
 
 -- FLY/Noclip state tracking
@@ -232,197 +164,201 @@ local FlyRoot = nil
 local Noclipping = false
 
 local function enableFly(enable)
-    if enable then
-        if Flying then return end
-        Flying = true
-        FlyRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not FlyRoot then 
-            notify("Karakter bulunamadı (HumanoidRootPart yok)!")
-            Flying = false
-            return
-        end
+    if enable then
+        if Flying then return end
+        Flying = true
+        FlyRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not FlyRoot then 
+            notify("Karakter bulunamadı (HumanoidRootPart yok)!")
+            Flying = false
+            return
+        end
 
-        local speed = 90
-        local bv = Instance.new("BodyVelocity")
-        bv.MaxForce = Vector3.new(1e5,1e5,1e5)
-        bv.P = 3e4
-        bv.Name = "FlyVelocity"
-        bv.Parent = FlyRoot
+        local speed = 90
+        local bv = Instance.new("BodyVelocity")
+        bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+        bv.P = 3e4
+        bv.Name = "FlyVelocity"
+        bv.Parent = FlyRoot
 
-        local bg = Instance.new("BodyGyro")
-        bg.MaxTorque = Vector3.new(1e6,1e6,1e6)
-        bg.P = 999999
-        bg.Name = "FlyGyro"
-        bg.Parent = FlyRoot
+        local bg = Instance.new("BodyGyro")
+        bg.MaxTorque = Vector3.new(1e6,1e6,1e6)
+        bg.P = 999999
+        bg.Name = "FlyGyro"
+        bg.Parent = FlyRoot
 
-        local ctrl = {f = 0, b = 0, l = 0, r = 0, y = 0}
-        local lastMove, camAngleY = tick(), 0
+        local ctrl = {f = 0, b = 0, l = 0, r = 0, y = 0}
+        local lastMove, camAngleY = tick(), 0
 
-        local updateBV = function()
-            local cam = Camera.CFrame
-            local Forw = cam.LookVector
-            local Right = cam.RightVector
-            Forw = Vector3.new(Forw.X,0,Forw.Z).Unit
-            Right = Vector3.new(Right.X,0,Right.Z).Unit
-            local moveVec = Vector3.new()
-            moveVec = moveVec + (Forw * (ctrl.f + ctrl.b))
-            moveVec = moveVec + (Right * (ctrl.r + ctrl.l))
-            moveVec = moveVec + Vector3.new(0, ctrl.y, 0)
-            if moveVec.Magnitude > 0 then moveVec = moveVec.Unit * speed else moveVec = Vector3.new() end
-            bv.Velocity = moveVec
-            bg.CFrame = CFrame.new(FlyRoot.Position, FlyRoot.Position + Camera.CFrame.LookVector)
-        end
+        local updateBV = function()
+            local cam = Camera.CFrame
+            local Forw = cam.LookVector
+            local Right = cam.RightVector
+            Forw = Vector3.new(Forw.X,0,Forw.Z).Unit
+            Right = Vector3.new(Right.X,0,Right.Z).Unit
+            local moveVec = Vector3.new()
+            moveVec = moveVec + (Forw * (ctrl.f + ctrl.b))
+            moveVec = moveVec + (Right * (ctrl.r + ctrl.l))
+            moveVec = moveVec + Vector3.new(0, ctrl.y, 0)
+            if moveVec.Magnitude > 0 then moveVec = moveVec.Unit * speed else moveVec = Vector3.new() end
+            bv.Velocity = moveVec
+            bg.CFrame = CFrame.new(FlyRoot.Position, FlyRoot.Position + Camera.CFrame.LookVector)
+        end
 
-        FlyConn = RunService.RenderStepped:Connect(updateBV)
-        table.insert(conns, FlyConn)
-        table.insert(conns, UserInputService.InputBegan:Connect(function(input)
-            if not Flying then return end
-            local code = input.KeyCode
-            if code == Enum.KeyCode.W then ctrl.f = 1 end
-            if code == Enum.KeyCode.S then ctrl.b = -1 end
-            if code == Enum.KeyCode.A then ctrl.l = -1 end
-            if code == Enum.KeyCode.D then ctrl.r = 1 end
-            if code == Enum.KeyCode.Space then ctrl.y = 1 end
-            if code == Enum.KeyCode.LeftControl or code == Enum.KeyCode.LeftShift then ctrl.y = -1 end
-        end))
-        table.insert(conns, UserInputService.InputEnded:Connect(function(input)
-            if not Flying then return end
-            local code = input.KeyCode
-            if code == Enum.KeyCode.W then ctrl.f = 0 end
-            if code == Enum.KeyCode.S then ctrl.b = 0 end
-            if code == Enum.KeyCode.A then ctrl.l = 0 end
-            if code == Enum.KeyCode.D then ctrl.r = 0 end
-            if code == Enum.KeyCode.Space and ctrl.y == 1 then ctrl.y = 0 end
-            if (code == Enum.KeyCode.LeftControl or code == Enum.KeyCode.LeftShift) and ctrl.y == -1 then ctrl.y = 0 end
-        end))
-        notify("Fly açıldı! WASD ve Mouse ile özgürce uç.")
-    else
-        Flying = false
-        if FlyConn then pcall(function() FlyConn:Disconnect() end) end
-        if FlyRoot and FlyRoot:FindFirstChild("FlyVelocity") then FlyRoot.FlyVelocity:Destroy() end
-        if FlyRoot and FlyRoot:FindFirstChild("FlyGyro") then FlyRoot.FlyGyro:Destroy() end
-        for _,conn in pairs(conns) do pcall(function() conn:Disconnect() end) end
-        conns = {}
-        notify("Fly kapalı!")
-    end
+        FlyConn = RunService.RenderStepped:Connect(updateBV)
+        table.insert(conns, FlyConn)
+        -- Controls: WASD + Q/E (down/up), mouse yönü
+        table.insert(conns, UserInputService.InputBegan:Connect(function(input)
+            if not Flying then return end
+            local code = input.KeyCode
+            if code == Enum.KeyCode.W then ctrl.f = 1 end
+            if code == Enum.KeyCode.S then ctrl.b = -1 end
+            if code == Enum.KeyCode.A then ctrl.l = -1 end
+            if code == Enum.KeyCode.D then ctrl.r = 1 end
+            if code == Enum.KeyCode.Space then ctrl.y = 1 end
+            if code == Enum.KeyCode.LeftControl or code == Enum.KeyCode.LeftShift then ctrl.y = -1 end
+        end))
+        table.insert(conns, UserInputService.InputEnded:Connect(function(input)
+            if not Flying then return end
+            local code = input.KeyCode
+            if code == Enum.KeyCode.W then ctrl.f = 0 end
+            if code == Enum.KeyCode.S then ctrl.b = 0 end
+            if code == Enum.KeyCode.A then ctrl.l = 0 end
+            if code == Enum.KeyCode.D then ctrl.r = 0 end
+            if code == Enum.KeyCode.Space and ctrl.y == 1 then ctrl.y = 0 end
+            if (code == Enum.KeyCode.LeftControl or code == Enum.KeyCode.LeftShift) and ctrl.y == -1 then ctrl.y = 0 end
+        end))
+        notify("Fly açıldı! WASD ve Mouse ile özgürce uç.")
+    else
+        Flying = false
+        if FlyConn then pcall(function() FlyConn:Disconnect() end) end
+        if FlyRoot and FlyRoot:FindFirstChild("FlyVelocity") then FlyRoot.FlyVelocity:Destroy() end
+        if FlyRoot and FlyRoot:FindFirstChild("FlyGyro") then FlyRoot.FlyGyro:Destroy() end
+        for _,conn in pairs(conns) do pcall(function() conn:Disconnect() end) end
+        conns = {}
+        notify("Fly kapalı!")
+    end
 end
 
 local function enableNoclip(enable)
-    if enable then
-        if Noclipping then return end
-        Noclipping = true
-        table.insert(conns, RunService.Stepped:Connect(function()
-            if Noclipping and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-                for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
-                    if v:IsA("BasePart") and v.CanCollide == true then v.CanCollide = false end
-                end
-            end
-        end))
-        notify("Noclip Açık! Hareket et ve duvardan geç.")
-    else
-        Noclipping = false
-        for _,conn in pairs(conns) do pcall(function() conn:Disconnect() end) end
-        conns = {}
-        if LocalPlayer.Character then
-            for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = true end
-            end
-        end
-        notify("Noclip Kapalı.")
-    end
+    if enable then
+        if Noclipping then return end
+        Noclipping = true
+        table.insert(conns, RunService.Stepped:Connect(function()
+            if Noclipping and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+                for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if v:IsA("BasePart") and v.CanCollide == true then v.CanCollide = false end
+                end
+            end
+        end))
+        notify("Noclip Açık! Hareket et ve duvardan geç.")
+    else
+        Noclipping = false
+        for _,conn in pairs(conns) do pcall(function() conn:Disconnect() end) end
+        conns = {}
+        if LocalPlayer.Character then
+            for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
+                if v:IsA("BasePart") then v.CanCollide = true end
+            end
+        end
+        notify("Noclip Kapalı.")
+    end
 end
 
 -- ESP & Fruit TP
 local ESPObjects = {}
 local function updateFruitESP(show, fruitName)
-    for _,obj in pairs(ESPObjects) do
-        if obj then pcall(function() obj:Remove() end) end
-    end
-    ESPObjects = {}
-    if not show or not fruitName then return end
-    local fruits = findAllFruitsByName(fruitName)
-    for _,fruit in ipairs(fruits) do
-        if fruit.Handle then
-            local box = Drawing and Drawing.new and Drawing.new("Quad")
-            if not box then continue end
-            box.Thickness = 2
-            box.Color = Color3.fromRGB(185,255,0)
-            box.Transparency = 0.7
-            box.Filled = false
-            box.Visible = true
-            table.insert(conns, RunService.RenderStepped:Connect(function()
-                if fruit and fruit.Parent and fruit.Handle then
-                    local cf, sz = fruit.Handle.CFrame, fruit.Handle.Size
-                    local pts = {
-                        Camera:WorldToViewportPoint((cf * CFrame.new(-sz.X/2, -sz.Y/2, -sz.Z/2)).p),
-                        Camera:WorldToViewportPoint((cf * CFrame.new(-sz.X/2, sz.Y/2, -sz.Z/2)).p),
-                        Camera:WorldToViewportPoint((cf * CFrame.new(sz.X/2, sz.Y/2, -sz.Z/2)).p),
-                        Camera:WorldToViewportPoint((cf * CFrame.new(sz.X/2, -sz.Y/2, -sz.Z/2)).p)
-                    }
-                    for i=1,4 do box["Point"..i] = Vector2.new(pts[i].X, pts[i].Y) end
-                    box.Visible = true
-                    if not fruit or not fruit.Parent then box.Visible = false end
-                else
-                    box.Visible = false
-                end
-            end))
-            table.insert(ESPObjects, box)
-        end
-    end
-    notify(#fruits>0 and fruitName.." ESP açıldı!" or ("Sunucuda "..fruitName.." yok."))
+    -- Clear ESP objects before
+    for _,obj in pairs(ESPObjects) do
+        if obj then pcall(function() obj:Remove() end) end
+    end
+    ESPObjects = {}
+    if not show or not fruitName then return end
+    local fruits = findAllFruitsByName(fruitName)
+    for _,fruit in ipairs(fruits) do
+        if fruit.Handle then
+            local box = Drawing and Drawing.new and Drawing.new("Quad")
+            if not box then continue end
+            box.Thickness = 2
+            box.Color = Color3.fromRGB(185,255,0)
+            box.Transparency = 0.7
+            box.Filled = false
+            box.Visible = true
+            table.insert(conns, RunService.RenderStepped:Connect(function()
+                if fruit and fruit.Parent and fruit.Handle then
+                    local cf, sz = fruit.Handle.CFrame, fruit.Handle.Size
+                    local pts = {
+                        Camera:WorldToViewportPoint((cf * CFrame.new(-sz.X/2, -sz.Y/2, -sz.Z/2)).p),
+                        Camera:WorldToViewportPoint((cf * CFrame.new(-sz.X/2, sz.Y/2, -sz.Z/2)).p),
+                        Camera:WorldToViewportPoint((cf * CFrame.new(sz.X/2, sz.Y/2, -sz.Z/2)).p),
+                        Camera:WorldToViewportPoint((cf * CFrame.new(sz.X/2, -sz.Y/2, -sz.Z/2)).p)
+                    }
+                    for i=1,4 do box["Point"..i] = Vector2.new(pts[i].X, pts[i].Y) end
+                    box.Visible = true
+                    if not fruit or not fruit.Parent then box.Visible = false end
+                else
+                    box.Visible = false
+                end
+            end))
+            table.insert(ESPObjects, box)
+        end
+    end
+    notify(#fruits>0 and fruitName.." ESP açıldı!" or ("Sunucuda "..fruitName.." yok."))
 end
 
 local function teleportAndGrabFruit(fruitName)
-    local fruits = findAllFruitsByName(fruitName)
-    if #fruits == 0 then
-        notify("Sunucuda "..fruitName.." yok!")
-        return
-    end
-    local fruit = fruits[1]
-    if not fruit.Handle then
-        notify("Fruit nesnesi yok!")
-        return
-    end
-    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then notify("Karakter hatası!"); return end
-    hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,3,0)
-    wait(0.5)
-    local picked = false
-    if fruit:FindFirstChildWhichIsA("ProximityPrompt",true) then
-        local prompt = fruit:FindFirstChildWhichIsA("ProximityPrompt",true)
-        fireproximityprompt = fireproximityprompt or getgenv().fireproximityprompt or function(obj)
-            for i=1,3 do
-                pcall(function() firetouchinterest(hrp, fruit.Handle, 0) end)
-                wait()
-            end
-        end
-        pcall(function() fireproximityprompt(prompt) end)
-        picked = true
-    elseif typeof(firetouchinterest) == "function" then
-        pcall(function() firetouchinterest(hrp, fruit.Handle, 0) end)
-        wait(0.15)
-        pcall(function() firetouchinterest(hrp, fruit.Handle, 1) end)
-        picked = true
-    else
-        for i=1,20 do
-            if (fruit.Handle.Position - hrp.Position).magnitude < 10 then
-                hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,1,0)
-            end
-            wait(0.07)
-        end
-        picked = true
-    end
-    wait(0.6)
-    if picked and (not fruit.Parent or not fruit:IsDescendantOf(Workspace)) then
-        notify(fruitName .. " alındı!")
-    else
-        notify("Fruit alınamadı!")
-    end
+    local fruits = findAllFruitsByName(fruitName)
+    if #fruits == 0 then
+        notify("Sunucuda "..fruitName.." yok!")
+        return
+    end
+    local fruit = fruits[1]
+    if not fruit.Handle then
+        notify("Fruit nesnesi yok!")
+        return
+    end
+    -- Teleport
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then notify("Karakter hatası!"); return end
+    hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,3,0)
+    wait(0.5)
+    -- "Alma" process -- try ProximityPrompt or Touch
+    local picked = false
+    if fruit:FindFirstChildWhichIsA("ProximityPrompt",true) then
+        local prompt = fruit:FindFirstChildWhichIsA("ProximityPrompt",true)
+        fireproximityprompt = fireproximityprompt or getgenv().fireproximityprompt or function(obj)
+            for i=1,3 do
+                pcall(function() firetouchinterest(hrp, fruit.Handle, 0) end)
+                wait()
+            end
+        end
+        pcall(function() fireproximityprompt(prompt) end)
+        picked = true
+    elseif typeof(firetouchinterest) == "function" then
+        pcall(function() firetouchinterest(hrp, fruit.Handle, 0) end)
+        wait(0.15)
+        pcall(function() firetouchinterest(hrp, fruit.Handle, 1) end)
+        picked = true
+    else
+        for i=1,20 do
+            if (fruit.Handle.Position - hrp.Position).magnitude < 10 then
+                hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,1,0)
+            end
+            wait(0.07)
+        end
+        picked = true
+    end
+    wait(0.6)
+    if picked and (not fruit.Parent or not fruit:IsDescendantOf(Workspace)) then
+        notify(fruitName .. " alındı!")
+    else
+        notify("Fruit alınamadı!")
+    end
 end
 
 ---------------- GUI PART ----------------
 for _,v in pairs(CoreGui:GetChildren()) do
-    if v.Name == "visitingmenu" then v:Destroy() end
+    if v.Name == "visitingmenu" then v:Destroy() end
 end
 local visitingmenu = Instance.new("ScreenGui")
 visitingmenu.Name = "visitingmenu"
@@ -430,9 +366,8 @@ visitingmenu.ZIndexBehavior = Enum.ZIndexBehavior.Global
 visitingmenu.Parent = CoreGui
 table.insert(guis, visitingmenu)
 
--- Server Hop butonunu da kaldırabilmesi için menü boyutu (Y ekseni) 420'den 465'e yükseltildi
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0,380,0,465)
+frame.Size = UDim2.new(0,380,0,420)
 frame.Position = UDim2.new(0.5,-180,0.35,-180)
 frame.BackgroundColor3 = Color3.fromRGB(30,35,80)
 frame.BackgroundTransparency = 0.12
@@ -463,34 +398,28 @@ sep.Parent = frame
 --- buttons/labels
 local btnY = 58
 local function addBtn(text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9,0,0,38)
-    btn.Position = UDim2.new(0.05,0,0,btnY)
-    btn.Text = text
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 20
-    btn.TextColor3 = Color3.fromRGB(243, 239, 177)
-    btn.BackgroundColor3 = Color3.fromRGB(50,65,120)
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = true
-    roundify(btn, 13)
-    btn.Parent = frame
-    btn.MouseButton1Click:Connect(callback)
-    btnY = btnY + 47
-    return btn
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9,0,0,38)
+    btn.Position = UDim2.new(0.05,0,0,btnY)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 20
+    btn.TextColor3 = Color3.fromRGB(243, 239, 177)
+    btn.BackgroundColor3 = Color3.fromRGB(50,65,120)
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = true
+    roundify(btn, 13)
+    btn.Parent = frame
+    btn.MouseButton1Click:Connect(callback)
+    btnY = btnY + 47
+    return btn
 end
 
 local flyBox = addBtn("[Fly] Aç/Kapat", function()
-    enableFly(not Flying)
+    enableFly(not Flying)
 end)
-
 local noclipBox = addBtn("[Noclip] Aç/Kapat", function()
-    enableNoclip(not Noclipping)
-end)
-
--- Yeni Eklenen Server Hop Butonu (Tasarımı bozmadan sıraya eklendi)
-local hopBox = addBtn("Server Hop (Sunucu Atla)", function()
-    serverHop()
+    enableNoclip(not Noclipping)
 end)
 
 -- Fruit Picker
@@ -530,38 +459,38 @@ roundify(fruitDropFrame, 10)
 btnY = btnY + 96
 
 refreshFruitDropdown(fruitDropFrame, function(fruit)
-    SelectedFruit = fruit
-    selectedFruitLbl.Text = fruit
+    SelectedFruit = fruit
+    selectedFruitLbl.Text = fruit
 end)
 
 fruitDropFrame.MouseEnter:Connect(function()
-    refreshFruitDropdown(fruitDropFrame, function(fruit)
-        SelectedFruit = fruit
-        selectedFruitLbl.Text = fruit
-    end)
+    refreshFruitDropdown(fruitDropFrame, function(fruit)
+        SelectedFruit = fruit
+        selectedFruitLbl.Text = fruit
+    end)
 end)
-
+-- Her tıklamada da güncelle ki oyunda yeni meyve gelirse gözükür!
 fruitDropFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        refreshFruitDropdown(fruitDropFrame, function(fruit)
-            SelectedFruit = fruit
-            selectedFruitLbl.Text = fruit
-        end)
-    end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        refreshFruitDropdown(fruitDropFrame, function(fruit)
+            SelectedFruit = fruit
+            selectedFruitLbl.Text = fruit
+        end)
+    end
 end)
 
 local espBtn = addBtn("Seçili Meyveyi Haritada Göster (ESP)", function()
-    ESPActive = not ESPActive
-    updateFruitESP(ESPActive, SelectedFruit)
-    espBtn.Text = ESPActive and "ESP: AÇIK [Kapatmak İçin Tıkla]" or "Seçili Meyveyi Haritada Göster (ESP)"
+    ESPActive = not ESPActive
+    updateFruitESP(ESPActive, SelectedFruit)
+    espBtn.Text = ESPActive and "ESP: AÇIK [Kapatmak İçin Tıkla]" or "Seçili Meyveyi Haritada Göster (ESP)"
 end)
 
 local tpBtn = addBtn("Seçili Meyveye Işınlan ve AL", function()
-    if not SelectedFruit then 
-        notify("Önce bir meyve seç.")
-        return
-    end
-    teleportAndGrabFruit(SelectedFruit)
+    if not SelectedFruit then 
+        notify("Önce bir meyve seç.")
+        return
+    end
+    teleportAndGrabFruit(SelectedFruit)
 end)
 
 local credits = Instance.new("TextLabel")
@@ -577,10 +506,10 @@ credits.Parent = frame
 
 -- MENU Hotkey
 UserInputService.InputBegan:Connect(function(input,gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.F4 or input.KeyCode == Enum.KeyCode.Insert then
-        visitingmenu.Enabled = not visitingmenu.Enabled
-    end
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.F4 or input.KeyCode == Enum.KeyCode.Insert then
+        visitingmenu.Enabled = not visitingmenu.Enabled
+    end
 end)
 
 notify("visitingmenu yüklendi! F4/Insert/RightCtrl ile aç/kapat.")
