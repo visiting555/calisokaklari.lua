@@ -41,9 +41,28 @@ local SelectedFruit = nil
 local ESPActive = false
 
 local FruitNames = {
-    "Kitsune", "Leopard", "Dough", "Dragon", "Venom", "Control", "Spirit", "Shadow", "Blizzard", "Magma", "Rubber", "Flame", "Ice", "Spike",
-    "Smoke", "Bomb", "Love", "Phoenix", "Portal", "Sand", "Dark", "Light", "Revive", "Diamond", "Ghost", "Chop", "Spring", "Barrier", "Quake",
-    "Buddha", "String", "Human: Buddha", "Gravity", "Paw", "Rumble"
+    "Kitsune",
+    "Dragon",
+    "Leopard",
+    "Dough",
+    "T-Rex",
+    "Mammoth",
+    "Gas",
+    "Spirit",
+    "Control",
+    "Venom",
+    "Shadow",
+    "Gravity",
+    "Buddha",
+    "Portal",
+    "Blizzard",
+    "Rumble",
+    "Yeti",
+    "Sound",
+    "Phoenix",
+    "Spider",
+    "Love",
+    "Pain"
 }
 
 local function findAllFruitsByName(fruitName)
