@@ -7,13 +7,13 @@ local CoreGui = game:GetService("CoreGui")
 
 local uniqueKey = "CaliMenu_"..tostring(math.random(1e5, 1e6-1))
 local cheatState = {
-    ESP = false, 
-    Aimbot = false, 
-    SilentAim = false, 
-    KillAll = false, 
-    GiveItems = false, 
-    GiveMoney = false, 
-    Fly = false, 
+    ESP = false,
+    Aimbot = false,
+    SilentAim = false,
+    KillAll = false,
+    GiveItems = false,
+    GiveMoney = false,
+    Fly = false,
     Noclip = false
 }
 local menuGUI = nil
@@ -77,79 +77,99 @@ function clearESP()
     espConnections = {}
 end
 
-function skeletonESP(char, plr)
+function modernSkeletonESP(char, plr)
     local camera = Workspace.CurrentCamera
-    local function createAdornment(type, prop)
-        local a = Instance.new(type)
-        for k,v in pairs(prop) do a[k]=v end
-        a.Parent = camera
-        table.insert(espObjects, a)
-        return a
-    end
-    if not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Head") then return end
-    local root = char.HumanoidRootPart
-    local head = char.Head
+    local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
+    local head = char:FindFirstChild("Head")
+    if not head or not torso then return end
 
-    local box = createAdornment("BoxHandleAdornment", {
-        Size = Vector3.new(3.6, 6.3, 2.25),
-        Adornee = root,
-        Color3 = Color3.new(1,1,1),
-        AlwaysOnTop = true,
-        ZIndex = 10,
-        Transparency = 0.12
-    })
-    local headBall = createAdornment("SphereHandleAdornment", {
-        Radius = 0.85,
-        Adornee = head,
-        Color3 = Color3.new(1,1,1),
-        AlwaysOnTop = true,
-        ZIndex = 11,
-        Transparency = 0.04
-    })
-
-    local function makeLine(from, to)
-        if not (from and to and from:IsA("BasePart") and to:IsA("BasePart")) then return end
-        local a0 = Instance.new("Attachment", from)
-        local a1 = Instance.new("Attachment", to)
-        local beam = Instance.new("Beam", camera)
-        beam.Attachment0 = a0
-        beam.Attachment1 = a1
-        beam.Color = ColorSequence.new(Color3.new(1,1,1))
-        beam.Width0 = 0.16
-        beam.Width1 = 0.16
-        beam.FaceCamera = true
-        beam.Transparency = NumberSequence.new(0.04)
-        beam.Segments = 1
-        table.insert(espObjects, a0)
-        table.insert(espObjects, a1)
-        table.insert(espObjects, beam)
-    end
-
-    local upper = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-    if upper then
-        makeLine(head, upper)
-        makeLine(upper, char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm"))
-        makeLine(upper, char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm"))
-        makeLine(upper, char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg"))
-        makeLine(upper, char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg"))
-        if char:FindFirstChild("LowerTorso") then
-            makeLine(upper, char.LowerTorso)
+    local function drawLine(obj1, obj2)
+        if obj1 and obj2 then
+            local b = Instance.new("Beam")
+            local att1 = Instance.new("Attachment"); att1.Parent = obj1
+            local att2 = Instance.new("Attachment"); att2.Parent = obj2
+            b.Attachment0 = att1
+            b.Attachment1 = att2
+            b.Color = ColorSequence.new(Color3.new(1,1,1))
+            b.Width0 = 0.16
+            b.Width1 = 0.16
+            b.Transparency = NumberSequence.new(0.04)
+            b.Segments = 1
+            b.FaceCamera = true
+            b.Parent = camera
+            table.insert(espObjects, att1)
+            table.insert(espObjects, att2)
+            table.insert(espObjects, b)
         end
+    end
+
+    local function drawBox(part)
+        local box = Instance.new("BoxHandleAdornment")
+        box.Size = part.Size + Vector3.new(0.5,0.5,0.5)
+        box.Adornee = part
+        box.Color3 = Color3.new(1,1,1)
+        box.AlwaysOnTop = true
+        box.ZIndex = 10
+        box.Transparency = 0.12
+        box.Parent = camera
+        table.insert(espObjects, box)
+    end
+
+    drawBox(torso)
+    local headBall = Instance.new("SphereHandleAdornment")
+    headBall.Radius = head.Size.X/2 + 0.13
+    headBall.Adornee = head
+    headBall.Color3 = Color3.new(1,1,1)
+    headBall.AlwaysOnTop = true
+    headBall.ZIndex = 11
+    headBall.Transparency = 0.04
+    headBall.Parent = camera
+    table.insert(espObjects, headBall)
+
+    -- Skeleton
+    local function partExists(name) return char:FindFirstChild(name) end
+    drawLine(head, torso)
+    if partExists("LeftUpperArm") and partExists("LeftLowerArm") then
+        drawLine(torso, char.LeftUpperArm)
+        drawLine(char.LeftUpperArm, char.LeftLowerArm)
+        if partExists("LeftHand") then drawLine(char.LeftLowerArm, char.LeftHand) end
+    elseif partExists("Left Arm") then
+        drawLine(torso, char["Left Arm"])
+    end
+    if partExists("RightUpperArm") and partExists("RightLowerArm") then
+        drawLine(torso, char.RightUpperArm)
+        drawLine(char.RightUpperArm, char.RightLowerArm)
+        if partExists("RightHand") then drawLine(char.RightLowerArm, char.RightHand) end
+    elseif partExists("Right Arm") then
+        drawLine(torso, char["Right Arm"])
+    end
+    if partExists("LeftUpperLeg") and partExists("LeftLowerLeg") then
+        drawLine(torso, char.LeftUpperLeg)
+        drawLine(char.LeftUpperLeg, char.LeftLowerLeg)
+        if partExists("LeftFoot") then drawLine(char.LeftLowerLeg, char.LeftFoot) end
+    elseif partExists("Left Leg") then
+        drawLine(torso, char["Left Leg"])
+    end
+    if partExists("RightUpperLeg") and partExists("RightLowerLeg") then
+        drawLine(torso, char.RightUpperLeg)
+        drawLine(char.RightUpperLeg, char.RightLowerLeg)
+        if partExists("RightFoot") then drawLine(char.RightLowerLeg, char.RightFoot) end
+    elseif partExists("Right Leg") then
+        drawLine(torso, char["Right Leg"])
     end
 end
 
-function trackESP(plr)
+function trackModernESP(plr)
     if plr == LocalPlayer then return end
-    local lastChar = nil
-    local function addESP(chr)
+    local function refreshESP(chr)
         if not chr then return end
-        local h = chr:FindFirstChild("Humanoid")
-        if h and h.Health > 0 then skeletonESP(chr, plr) end
+        local h = chr:FindFirstChildOfClass("Humanoid")
+        if h and h.Health > 0 then modernSkeletonESP(chr, plr) end
     end
-    if plr.Character then addESP(plr.Character) end
+    if plr.Character then refreshESP(plr.Character) end
     local c1 = plr.CharacterAdded:Connect(function(chr)
         wait(0.13)
-        addESP(chr)
+        refreshESP(chr)
     end)
     table.insert(espConnections, c1)
 end
@@ -158,9 +178,14 @@ function setESP(on)
     cheatState.ESP = on
     clearESP()
     if on then
-        for _,plr in ipairs(Players:GetPlayers()) do pcall(function() trackESP(plr) end) end
-        local conn = Players.PlayerAdded:Connect(function(p) trackESP(p) end)
+        for _,plr in ipairs(Players:GetPlayers()) do pcall(function() trackModernESP(plr) end) end
+        local conn = Players.PlayerAdded:Connect(function(p) trackModernESP(p) end)
         table.insert(espConnections, conn)
+        RunService.RenderStepped:Connect(function()
+            if not cheatState.ESP then return end
+            clearESP()
+            for _,plr in ipairs(Players:GetPlayers()) do pcall(function() if plr ~= LocalPlayer and plr.Character then modernSkeletonESP(plr.Character, plr) end end) end
+        end)
     end
 end
 
@@ -191,8 +216,7 @@ function setAimbot(on)
             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                 local c = getClosestPlayerToCursor()
                 if c and c.Character and c.Character:FindFirstChild("Head") then
-                    local cam = Workspace.CurrentCamera
-                    cam.CFrame = CFrame.new(cam.CFrame.Position, c.Character.Head.Position)
+                    Workspace.CurrentCamera.CFrame = CFrame.new(Workspace.CurrentCamera.CFrame.Position, c.Character.Head.Position)
                 end
             end
         end)
@@ -204,7 +228,6 @@ function setSilentAim(on)
     cheatState.SilentAim = on
     if silentAimConn then pcall(function() silentAimConn:Disconnect() end) end
     silentAimData.Target = nil
-
     if on then
         silentAimConn = RunService.Heartbeat:Connect(function()
             silentAimData.Target = nil
@@ -305,7 +328,7 @@ function setFly(state)
             flyBodyVel.MaxForce = Vector3.new(9e9,9e9,9e9)
         end
         flyConn = RunService.RenderStepped:Connect(function()
-            if not flying or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then 
+            if not flying or not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 setFly(false)
                 return
             end
