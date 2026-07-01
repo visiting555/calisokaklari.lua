@@ -1,10 +1,11 @@
 --[[
-Blox Fruits Pro GUI Script (v2)
+Blox Fruits Pro GUI Script (v2.1)
 • FLY (Kendi kontrolünle özgürce hareket! WASD yukarı/ileri, Mouse yön verir, Space zıplatır.)
 • NOCLIP (bina/duvardan kolay geçiş)
 • Meyve seçme alanında, sunucuda olan meyvelerin yanında "(+n)" olarak kaç tane varsa yazar!
 • "Yerini Göster" = ESP ile haritadaki seçilen meyveyi göster (aktif/gizle)
 • "Tıkla-Teleport & Topla" = Seçilen meyveye ışınga + anında al (eğer alınamazsa bildirim verir)
+• SERVER HOP = Menü içerisindeki butonla doğrudan kişi sayısı en az olan başka bir sunucuya atlar!
 • Taşınabilir, yenilenmiş, havalı bir menü (Adı visitingmenu)
 • Tüm hata bildirimleri, boş fonksiyon yok, bug-free. Normal executor ile açılır/taşınır GARANTİ.
 --]]
@@ -65,6 +66,55 @@ local FruitNames = {
     "Pain"
 }
 
+-- Server Hop (Sunucu Değiştirme) Fonksiyonu
+local function serverHop()
+    local HttpService = game:GetService("HttpService")
+    local TeleportService = game:GetService("TeleportService")
+    local PlaceId = game.PlaceId
+
+    local function getServers(cursor)
+        local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+        if cursor then
+            url = url .. "&cursor=" .. cursor
+        end
+        local suc, res = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(url))
+        end)
+        if suc and res then
+            return res
+        end
+        return nil
+    end
+
+    local myJobId = game.JobId
+    local minPlayersServer
+
+    local nextPage = nil
+    repeat
+        local servers = getServers(nextPage)
+        if servers then
+            for _,server in ipairs(servers.data) do
+                if server.playing < server.maxPlayers and server.id ~= myJobId then
+                    if not minPlayersServer or server.playing < minPlayersServer.playing then
+                        minPlayersServer = server
+                    end
+                end
+            end
+            nextPage = servers.nextPageCursor
+        else
+            nextPage = nil
+        end
+    until not nextPage or minPlayersServer
+
+    if minPlayersServer then
+        notify("Sunucudan çıkılıyor... (Az kişilik sunucu aranıyor)")
+        wait(1)
+        TeleportService:TeleportToPlaceInstance(PlaceId, minPlayersServer.id, LocalPlayer)
+    else
+        notify("Uygun sunucu bulunamadı!")
+    end
+end
+
 local function findAllFruitsByName(fruitName)
     local found = {}
     for _,obj in pairs(Workspace:GetChildren()) do
@@ -73,23 +123,23 @@ local function findAllFruitsByName(fruitName)
             if fname:lower():find(fruitName:lower()) then
                 table.insert(found, obj)
             end
-        elseif obj:IsA("Tool") and obj.Name:lower():find(fruitName:lower()) then -- fallback
-            table.insert(found, obj)
+        end
+    elseif obj:IsA("Tool") and obj.Name:lower():find(fruitName:lower()) then -- fallback
+        table.insert(found, obj)
+    end
+end
+-- Also check FruitSpawn if exists
+if Workspace:FindFirstChild("FruitSpawn") then
+    for _,v in pairs(Workspace.FruitSpawn:GetChildren()) do
+        if v:IsA("Tool") and v:FindFirstChild("FruitName") and v.FruitName.Value:lower():find(fruitName:lower()) then
+            table.insert(found, v)
         end
     end
-    -- Also check FruitSpawn if exists
-    if Workspace:FindFirstChild("FruitSpawn") then
-        for _,v in pairs(Workspace.FruitSpawn:GetChildren()) do
-            if v:IsA("Tool") and v:FindFirstChild("FruitName") and v.FruitName.Value:lower():find(fruitName:lower()) then
-                table.insert(found, v)
-            end
-        end
-    end
-    return found
+end
+return found
 end
 
 local function countServerFruits()
-    -- returns a dictionary: { ["Kitsune"]=2, ... }
     local tbl = {}
     for _,fruit in ipairs(FruitNames) do tbl[fruit] = 0 end
     for _,obj in pairs(Workspace:GetChildren()) do
@@ -124,7 +174,6 @@ local function countServerFruits()
 end
 
 local function refreshFruitDropdown(dropdownFrame, callback)
-    -- Clean up any existing
     for _,c in pairs(dropdownFrame:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
     local Y, fruitCounts = 0, countServerFruits()
     for i,fruit in ipairs(FruitNames) do
@@ -226,7 +275,6 @@ local function enableFly(enable)
 
         FlyConn = RunService.RenderStepped:Connect(updateBV)
         table.insert(conns, FlyConn)
-        -- Controls: WASD + Q/E (down/up), mouse yönü
         table.insert(conns, UserInputService.InputBegan:Connect(function(input)
             if not Flying then return end
             local code = input.KeyCode
@@ -287,7 +335,6 @@ end
 -- ESP & Fruit TP
 local ESPObjects = {}
 local function updateFruitESP(show, fruitName)
-    -- Clear ESP objects before
     for _,obj in pairs(ESPObjects) do
         if obj then pcall(function() obj:Remove() end) end
     end
@@ -336,12 +383,10 @@ local function teleportAndGrabFruit(fruitName)
         notify("Fruit nesnesi yok!")
         return
     end
-    -- Teleport
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then notify("Karakter hatası!"); return end
     hrp.CFrame = fruit.Handle.CFrame + Vector3.new(0,3,0)
     wait(0.5)
-    -- "Alma" process -- try ProximityPrompt or Touch
     local picked = false
     if fruit:FindFirstChildWhichIsA("ProximityPrompt",true) then
         local prompt = fruit:FindFirstChildWhichIsA("ProximityPrompt",true)
@@ -385,8 +430,9 @@ visitingmenu.ZIndexBehavior = Enum.ZIndexBehavior.Global
 visitingmenu.Parent = CoreGui
 table.insert(guis, visitingmenu)
 
+-- Server Hop butonunu da kaldırabilmesi için menü boyutu (Y ekseni) 420'den 465'e yükseltildi
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0,380,0,420)
+frame.Size = UDim2.new(0,380,0,465)
 frame.Position = UDim2.new(0.5,-180,0.35,-180)
 frame.BackgroundColor3 = Color3.fromRGB(30,35,80)
 frame.BackgroundTransparency = 0.12
@@ -437,8 +483,14 @@ end
 local flyBox = addBtn("[Fly] Aç/Kapat", function()
     enableFly(not Flying)
 end)
+
 local noclipBox = addBtn("[Noclip] Aç/Kapat", function()
     enableNoclip(not Noclipping)
+end)
+
+-- Yeni Eklenen Server Hop Butonu (Tasarımı bozmadan sıraya eklendi)
+local hopBox = addBtn("Server Hop (Sunucu Atla)", function()
+    serverHop()
 end)
 
 -- Fruit Picker
@@ -488,7 +540,7 @@ fruitDropFrame.MouseEnter:Connect(function()
         selectedFruitLbl.Text = fruit
     end)
 end)
--- Her tıklamada da güncelle ki oyunda yeni meyve gelirse gözükür!
+
 fruitDropFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         refreshFruitDropdown(fruitDropFrame, function(fruit)
