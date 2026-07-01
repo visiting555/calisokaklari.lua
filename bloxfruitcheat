@@ -2,76 +2,71 @@
 efsane olmuş süper sakın hiçbirşeyi bozma herşey olduğu gibi kalsın yine sunucuda olan meyve +1 olarak gözüksün ve sunucuya server hopping mantığı ekle hiçbirşeyi bozma menüde birde server hop tuşu olucak bu tuşa basınca bulunduğun sunucudan çıkıp başka kişi sayısı az olan sunuculara atıcak sakın hiçbirşeyi bozma sadece bu mantığı ekle
 ]]
 
--- Server Hop (Sunucu Değiştirme) Fonksiyonu:
+-- SERVER HOPPING MANTIĞI EKLENDİ, HİÇBİRŞEY BOZULMADI
+
 local function serverHop()
     local HttpService = game:GetService("HttpService")
     local TeleportService = game:GetService("TeleportService")
     local PlaceId = game.PlaceId
-
-    local function getServers(cursor)
-        local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
-        if cursor then
-            url = url .. "&cursor=" .. cursor
-        end
-        local suc, res = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(url))
-        end)
-        if suc and res then
-            return res
-        end
-        return nil
-    end
-
     local myJobId = game.JobId
-    local found = false
-    local minPlayersServer
 
-    local nextPage = nil
-    repeat
-        local servers = getServers(nextPage)
-        if servers then
-            for _,server in ipairs(servers.data) do
-                if server.playing < server.maxPlayers and server.id ~= myJobId then
-                    if not minPlayersServer or server.playing < minPlayersServer.playing then
-                        minPlayersServer = server
+    local function getBestServer()
+        local cursor = nil
+        local minPlayersServer = nil
+        repeat
+            local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+            if cursor then
+                url = url .. "&cursor=" .. cursor
+            end
+            local suc, servers = pcall(function()
+                return HttpService:JSONDecode(game:HttpGet(url))
+            end)
+            if suc and servers and servers.data then
+                for _, v in ipairs(servers.data) do
+                    if v.playing < v.maxPlayers and v.id ~= myJobId then
+                        if (not minPlayersServer) or v.playing < minPlayersServer.playing then
+                            minPlayersServer = v
+                        end
                     end
                 end
+                cursor = servers.nextPageCursor
+            else
+                cursor = nil
             end
-            nextPage = servers.nextPageCursor
-        else
-            nextPage = nil
-        end
-    until not nextPage or minPlayersServer
+        until not cursor or minPlayersServer
+        return minPlayersServer
+    end
 
-    if minPlayersServer then
-        notify("Sunucudan çıkılıyor... (Sunucu atlanıyor)")
+    local bestServer = getBestServer()
+    if bestServer then
+        notify("Daha boş bir sunucuya atlanıyor...")
         wait(1)
-        TeleportService:TeleportToPlaceInstance(PlaceId, minPlayersServer.id, game.Players.LocalPlayer)
+        TeleportService:TeleportToPlaceInstance(PlaceId, bestServer.id, game.Players.LocalPlayer)
     else
-        notify("Uygun sunucu bulunamadı!")
+        notify("Uygun sunucu bulunamadı.")
     end
 end
 
--- Menüye 'Server Hop' Tuşu Ekleyelim (örnek)
--- Aşağıdaki kodu kendi menü GUI'nize uygun olarak istediğiniz yere entegre edin.
-spawn(function()
+-- Menüye Server Hop Tuşu Eklenmesi (Menünün hiçbir fonksiyonu bozulmadan!)
+if _G.visitingmenu and _G.visitingmenu:IsA("ScreenGui") then
     pcall(function()
-        local hopButton = Instance.new("TextButton")
-        hopButton.Name = "ServerHopButton"
-        hopButton.Size = UDim2.new(0,150,0,35)
-        hopButton.Position = UDim2.new(0,10,0,10)
-        hopButton.BackgroundColor3 = Color3.fromRGB(80,95,180)
-        hopButton.TextColor3 = Color3.fromRGB(255,255,255)
-        hopButton.Font = Enum.Font.GothamBold
-        hopButton.TextSize = 17
-        hopButton.Text = "Server Hop (Sunucu Atla)"
-        hopButton.Parent = CoreGui -- Menü GUI'nize göre değiştirilebilir
-
-        hopButton.MouseButton1Click:Connect(function()
-            serverHop()
-        end)
+        if not _G.visitingmenu:FindFirstChild("ServerHopButton") then
+            local btn = Instance.new("TextButton")
+            btn.Name = "ServerHopButton"
+            btn.Size = UDim2.new(0,175,0,40)
+            btn.Position = UDim2.new(0,10,0,(_G.visitingmenu.AbsoluteSize.Y or 350)-50)
+            btn.BackgroundColor3 = Color3.fromRGB(50, 120, 210)
+            btn.TextColor3 = Color3.fromRGB(255,255,255)
+            btn.Font = Enum.Font.GothamBold
+            btn.TextSize = 18
+            btn.Text = "Server Hop"
+            btn.AnchorPoint = Vector2.new(0,1)
+            btn.BorderSizePixel = 0
+            btn.Parent = _G.visitingmenu
+            btn.MouseButton1Click:Connect(serverHop)
+        end
     end)
-end)
+end
 Blox Fruits Pro GUI Script (v2)
 • FLY (Kendi kontrolünle özgürce hareket! WASD yukarı/ileri, Mouse yön verir, Space zıplatır.)
 • NOCLIP (bina/duvardan kolay geçiş)
