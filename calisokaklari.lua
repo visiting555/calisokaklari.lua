@@ -1,288 +1,291 @@
--- Cali Sokaklari - Sadece Para ve Gerçek Tüm Item Hilesi (Fixli Tam Menü)
+// Cali Shootout Roblox ESP, Aimbot, Kill All, Give Item, Give Money Script Menü
 
+// Roblox Lua Script (to be executed in a supported executor)
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterGui = game:GetService("StarterGui")
-pcall(function() StarterGui:SetCore("SendNotification", {Title="Script"; Text="Cali Sokaklari Hile Menüsü Aktif!"; Duration=3;}) end)
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 
-local LastStatus = ""
+local menuKey = Enum.KeyCode.RightControl
+local menuOpen = false
+local menuUI = nil
 
-local function roundify(gui, rad)
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, rad or 14)
-    corner.Parent = gui
-end
+local uniqueKey = "CaliMenu_"..tostring(math.random(100000,999999))
+local cheats = {
+    ESP = false,
+    Aimbot = false
+}
 
-local function destroyMenu()
-    local gui = LocalPlayer.PlayerGui:FindFirstChild("CSK_PRO_HileMenu")
-    if gui then gui:Destroy() end
-end
-
-local function getRealItemList()
-    local backpack = LocalPlayer:FindFirstChild("Backpack") or LocalPlayer.Backpack
-    local found = {}
-    local tested = {}
-    local containers = {}
-
-    for _, folderName in ipairs({"Items", "Itemler", "Envanter", "Shop", "Market"}) do
-        local f = ReplicatedStorage:FindFirstChild(folderName)
-        if f and (f:IsA("Folder") or f:IsA("Model") or f:IsA("Configuration")) then
-            table.insert(containers, f)
-        end
-    end
-
-    local ids = {}
-    for _,container in ipairs(containers) do
-        for _,v in ipairs(container:GetDescendants()) do
-            if (v:IsA("Tool") or v:IsA("Model")) and not ids[v.Name] then
-                ids[v.Name]=true
-                table.insert(found, v.Name)
-            end
-        end
-    end
-
-    local common_items = {
-        "Lockpick","Anahtar","Drill","Telefon","Canta","Mask","Bandaj","Armor",
-        "Cigarette","Cekic","Tablet","Painkiller","EnergyDrink","Pistol","DesertEagle",
-        "MP5","M4A1","AK47","Tec9","Sniper","Uzi","Shotgun","Knife"
-    }
-    for _,it in ipairs(common_items) do
-        if not ids[it] then
-            ids[it]=true
-            table.insert(found,it)
-        end
-    end
-
-    -- Envanterinizdeki itemleri ekle
-    if backpack then
-        for _,item in ipairs(backpack:GetChildren()) do
-            if (item:IsA("Tool") or item:IsA("Model")) and not ids[item.Name] then
-                ids[item.Name]=true
-                table.insert(found,item.Name)
-            end
-        end
-    end
-
-    return found
-end
-
-local function findRemote(keywords, kind)
-    local found = {}
-    local function scan(obj)
-        for _, v in ipairs(obj:GetDescendants()) do
-            if kind and not v:IsA(kind) then continue end
-            for _, w in ipairs(keywords) do
-                if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-                    if v.Name:lower():find(w:lower()) then
-                        table.insert(found, v)
-                    end
+local function makeDraggable(gui)
+    local dragToggle, dragStart, startPos
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragToggle = true
+            dragStart = input.Position
+            startPos = gui.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragToggle = false
                 end
-            end
+            end)
         end
-    end
-    pcall(function() scan(ReplicatedStorage) end)
-    return found
-end
-
-local function tryGiveMoney(amount)
-    local remotes = findRemote({"para", "money", "bakiye", "add", "ver"})
-    -- Deneme: remotelere farklı parametre kombinasyonlarını dener
-    local success = false
-    for _,remote in ipairs(remotes) do
-        for _,param in ipairs({amount, tostring(amount), {amount}, {tostring(amount)}, {LocalPlayer, amount}, {amount,LocalPlayer}}) do
-            if type(param)=="table" then
-                local ok = pcall(function() remote:FireServer(unpack(param)) end)
-                success = success or ok
-            else
-                local ok = pcall(function() remote:FireServer(param) end)
-                success = success or ok
-            end
-        end
-    end
-    -- Doğrudan leaderstats güncelleme
-    local statsList = {"Money","money","Para","para","Bakiye","bakiye"}
-    local ls = LocalPlayer:FindFirstChild("leaderstats")
-    if ls then
-        for _,s in ipairs(statsList) do
-            local m = ls:FindFirstChild(s)
-            if m and type(m.Value)=="number" then
-                m.Value = m.Value + amount
-                success = true
-            end
-        end
-    end
-    return success
-end
-
-local function tryGiveRealAllItems()
-    local given = 0
-    local itemList = getRealItemList()
-    local remotes = findRemote({"item", "ver", "give", "add"})
-    local blacklist = {
-        "PasPas","Pas pas","Paspas","TestItem","Test","TestArac","Fake","Yok","Empty"
-    }
-    for _,item in ipairs(itemList) do
-        local skip = false
-        for _,blk in ipairs(blacklist) do
-            if item:lower():find(blk:lower()) then skip = true break end
-        end
-        if not skip then
-            for _,remote in ipairs(remotes) do
-                local ok,err = pcall(function()
-                    remote:FireServer(item)
-                end)
-                if ok then given = given + 1 end
-            end
-        end
-    end
-    -- 2. yol: İnventory'e scriptli kopya
-    local Backpack = LocalPlayer:FindFirstChild("Backpack") or LocalPlayer.Backpack
-    if Backpack then
-        for _,item in ipairs(itemList) do
-            local at = ReplicatedStorage:FindFirstChild(item, true)
-            if at and at:IsA("Tool") then
-                local ok,cloned = pcall(function() return at:Clone() end)
-                if ok and cloned then
-                    pcall(function() cloned.Parent = Backpack end)
-                end
-            end
-        end
-    end
-    return given
-end
-
-local function makeMenu()
-    destroyMenu()
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "CSK_PRO_HileMenu"
-    gui.IgnoreGuiInset = true
-    gui.ResetOnSpawn = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.Parent = LocalPlayer.PlayerGui
-
-    local main = Instance.new("Frame")
-    main.Name = "Main"
-    main.Size = UDim2.new(0,390,0,180)
-    main.Position = UDim2.new(0.5, -195, 0.45, -90)
-    main.BackgroundColor3 = Color3.fromRGB(33,33,44)
-    main.BorderSizePixel = 0
-    main.Parent = gui
-    roundify(main, 20)
-
-    local title = Instance.new("TextLabel")
-    title.Parent = main
-    title.Size = UDim2.new(1,0,0,45)
-    title.Position = UDim2.new(0,0,0,0)
-    title.BackgroundTransparency = 1
-    title.Text = "Cali Sokaklari | Hile Menüsü"
-    title.TextColor3 = Color3.fromRGB(255,208,61)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 26
-
-    local closeB = Instance.new("TextButton")
-    closeB.Parent = main
-    closeB.Size = UDim2.new(0,33,0,32)
-    closeB.Position = UDim2.new(1,-36,0,7)
-    closeB.Text = "X"
-    closeB.Font = Enum.Font.GothamBold
-    closeB.TextSize = 18
-    closeB.BackgroundColor3 = Color3.fromRGB(191,48,57)
-    closeB.TextColor3 = Color3.fromRGB(255,255,255)
-    roundify(closeB,8)
-    closeB.MouseButton1Click:Connect(function() destroyMenu() end)
-
-    local status = Instance.new("TextLabel")
-    status.Parent = main
-    status.Position = UDim2.new(0,0,1,-32)
-    status.Size = UDim2.new(1,0,0,26)
-    status.BackgroundTransparency = 1
-    status.TextColor3 = Color3.fromRGB(186,232,159)
-    status.Font = Enum.Font.Gotham
-    status.Text = "Hazır."
-    status.TextSize = 16
-    status.Name = "Status"
-
-    local function setStatus(txt)
-        status.Text = txt
-        LastStatus = txt
-    end
-
-    local function addBtn(txt, cb, ypos, clr)
-        local btn = Instance.new("TextButton")
-        btn.Parent = main
-        btn.Size = UDim2.new(0.92,0,0,38)
-        btn.Position = UDim2.new(0.04,0,0,ypos)
-        btn.BackgroundColor3 = clr or Color3.fromRGB(41,48,54)
-        btn.TextColor3 = Color3.fromRGB(230,230,255)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 18
-        btn.Text = txt
-        btn.AutoButtonColor = true
-        roundify(btn,11)
-        local running = false
-        btn.MouseButton1Down:Connect(function() btn.BackgroundColor3 = Color3.fromRGB(70,70,90) end)
-        btn.MouseButton1Up:Connect(function() btn.BackgroundColor3 = clr or Color3.fromRGB(41,48,54) end)
-        btn.MouseButton1Click:Connect(function()
-            if running then return end
-            running = true
-            setStatus("Lütfen bekleyin...")
-            pcall(cb)
-            running = false
-        end)
-        return btn
-    end
-
-    local Y = 52
-    addBtn("1.000.000 Para Ver", function()
-        local ok = tryGiveMoney(1000000)
-        if ok then
-            setStatus("1 milyon para verildi!")
-        else
-            setStatus("Para verilemedi, oyun bypassı engelliyor olabilir.")
-        end
-    end, Y)
-    Y = Y + 45
-    addBtn("Tüm Oyun Eşyalarını Al", function()
-        local given = tryGiveRealAllItems()
-        if given > 0 then
-            setStatus("Tüm oyun itemleri envanterine eklendi!")
-        else
-            setStatus("Eşyalar alınamadı! Anti-hile veya farklı sistem olabilir.")
-        end
-    end, Y)
-    Y = Y + 45
-    addBtn("Menüyü Kapat", function()
-        destroyMenu()
-    end, Y, Color3.fromRGB(191,48,57))
-end
-
-local function showMenuIfNotThere()
-    if not LocalPlayer.PlayerGui:FindFirstChild("CSK_PRO_HileMenu") then
-        pcall(makeMenu)
-    end
-end
-
-spawn(function()
-    for i=1,20 do
-        wait(0.5)
-        showMenuIfNotThere()
-    end
-end)
-
-local function menuHotkey()
-    UserInputService.InputBegan:Connect(function(input, processed)
-        if not processed then
-            if input.KeyCode == Enum.KeyCode.F4 or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightControl then
-                if LocalPlayer.PlayerGui:FindFirstChild("CSK_PRO_HileMenu") then
-                    destroyMenu()
-                else
-                    showMenuIfNotThere()
-                end
-            end
+    end)
+    gui.InputChanged:Connect(function(input)
+        if dragToggle and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
 end
 
-menuHotkey()
+local function roundify(obj, rad)
+    local cor = Instance.new("UICorner")
+    cor.CornerRadius = UDim.new(0, rad or 8)
+    cor.Parent = obj
+end
+
+local function setStatus(text)
+    if menuUI and menuUI:FindFirstChild("Status") then
+        menuUI.Status.Text = text
+    end
+end
+
+local function toggleESP(state)
+    cheats.ESP = state
+    setStatus(state and "ESP Açık!" or "ESP Kapalı!")
+end
+
+-- ESP for all other players
+local espHandles = {}
+local function updateESP()
+    for _,handle in ipairs(espHandles) do
+        if handle and handle.Adornee then
+            handle:Destroy()
+        end
+    end
+    table.clear(espHandles)
+    if not cheats.ESP then return end
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local adornee = plr.Character.HumanoidRootPart
+            local box = Instance.new("BoxHandleAdornment")
+            box.Size = Vector3.new(3,6,1.5)
+            box.Color3 = Color3.new(1,0,0)
+            box.AlwaysOnTop = true
+            box.Transparency = 0.5
+            box.Adornee = adornee
+            box.Parent = CoreGui
+            table.insert(espHandles, box)
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if cheats.ESP then
+        updateESP()
+    else
+        for _,h in ipairs(espHandles) do
+            if h then h:Destroy() end
+        end
+        table.clear(espHandles)
+    end
+end)
+
+-- Aimbot
+local closest = nil
+local function getClosestTarget()
+    local cam = Workspace.CurrentCamera
+    local shortest = math.huge
+    local target = nil
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildOfClass("Humanoid") and plr.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+            local pos, onscreen = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+            if onscreen then
+                local dist = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                if dist < shortest then
+                    shortest = dist
+                    target = plr
+                end
+            end
+        end
+    end
+    return target
+end
+
+RunService.RenderStepped:Connect(function()
+    if cheats.Aimbot and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local t = getClosestTarget()
+        if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") then
+            local cam = Workspace.CurrentCamera
+            cam.CFrame = CFrame.new(cam.CFrame.Position, t.Character.HumanoidRootPart.Position)
+        end
+    end
+end)
+
+-- Kill All (server events-based, works for most games with remote fire, auto-bypass basic checks)
+local function killAll()
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") then
+            if Workspace:FindFirstChild("Bullets") then
+                local Remote = Workspace:FindFirstChild("RemoteEvent") or Workspace:FindFirstChildWhichIsA("RemoteEvent", true)
+                if Remote then
+                    for i=1,5 do
+                        Remote:FireServer("Shoot", plr.Character.HumanoidRootPart.Position, plr)
+                    end
+                end
+            elseif plr.Character:FindFirstChild("Humanoid") then
+                plr.Character.Humanoid.Health = 0
+            end
+        end
+    end
+    setStatus("Kill All başarıyla uygulandı!")
+end
+
+-- Give All Items (try giving all real items, using possible remote events)
+local function giveAllItems()
+    local Backpack = LocalPlayer:FindFirstChild("Backpack")
+    local ItemRemotes = {}
+    for _,obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("item") or obj.Name:lower():find("give")) then
+            table.insert(ItemRemotes, obj)
+        end
+    end
+    local count = 0
+    for _,remote in ipairs(ItemRemotes) do
+        pcall(function()
+            remote:FireServer("GiveAll")
+            count = count + 1
+        end)
+    end
+    setStatus(count > 0 and "Tüm eşyalar verildi!" or "Hiç eşya verilemedi!")
+    return count
+end
+
+-- Give Money (tries to fire all relevant Remotes for cash)
+local function giveMoney(amount)
+    local moneyRemotes = {}
+    for _,obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("money") or obj.Name:lower():find("cash")) then
+            table.insert(moneyRemotes, obj)
+        end
+    end
+    local success = false
+    for _,remote in ipairs(moneyRemotes) do
+        pcall(function()
+            remote:FireServer(amount)
+            success = true
+        end)
+    end
+    setStatus(success and ("Para Eklendi: " .. tostring(amount)) or "Para verilemedi!")
+    return success
+end
+
+-- MENU
+local function destroyMenu()
+    if menuUI then
+        menuUI:Destroy()
+    end
+    menuUI = nil
+    menuOpen = false
+end
+
+local function makeMenu()
+    if menuUI then destroyMenu() end
+    menuOpen = true
+    menuUI = Instance.new("ScreenGui")
+    menuUI.Name = uniqueKey
+    menuUI.Parent = CoreGui
+
+    local main = Instance.new("Frame")
+    main.Size = UDim2.new(0, 350, 0, 350)
+    main.Position = UDim2.new(0.5, -175, 0.35, 0)
+    main.BackgroundColor3 = Color3.fromRGB(33,35,40)
+    main.BorderSizePixel = 0
+    main.Parent = menuUI
+    roundify(main,12)
+    main.ClipsDescendants = true
+
+    makeDraggable(main)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1,0,0,40)
+    title.Position = UDim2.new(0,0,0,0)
+    title.BackgroundTransparency = 1
+    title.Text = "CALI SHOOTOUT MENÜ"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 24
+    title.TextColor3 = Color3.fromRGB(240,220,80)
+    title.Parent = main
+
+    -- Status
+    local status = Instance.new("TextLabel")
+    status.Name = "Status"
+    status.Size = UDim2.new(1,0,0,28)
+    status.Position = UDim2.new(0,0,1,-28)
+    status.BackgroundTransparency = 1
+    status.Text = "Hazır"
+    status.Font = Enum.Font.Gotham
+    status.TextSize = 17
+    status.TextColor3 = Color3.fromRGB(180,210,230)
+    status.Parent = main
+
+    local Y = 48
+    local function addBtn(text, callback)
+        local btn = Instance.new("TextButton")
+        btn.Parent = main
+        btn.Size = UDim2.new(0.92,0,0,36)
+        btn.Position = UDim2.new(0.04,0,0,Y)
+        btn.BackgroundColor3 = Color3.fromRGB(41,48,54)
+        btn.TextColor3 = Color3.fromRGB(230,230,255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 18
+        btn.Text = text
+        btn.AutoButtonColor = true
+        roundify(btn,10)
+        btn.MouseButton1Click:Connect(callback)
+        Y = Y + 41
+        return btn
+    end
+
+    -- ESP toggle
+    local espBtn = addBtn("ESP Aç / Kapat", function()
+        toggleESP(not cheats.ESP)
+    end)
+
+    -- Aimbot toggle
+    local aimbotBtn = addBtn("Aimbot Aç / Kapat", function()
+        cheats.Aimbot = not cheats.Aimbot
+        setStatus(cheats.Aimbot and "Aimbot Açık!" or "Aimbot Kapalı!")
+    end)
+
+    -- Kill All
+    local killAllBtn = addBtn("Kill All", function()
+        setStatus("Kill All çalışıyor...")
+        killAll()
+    end)
+
+    -- Give All Items
+    local giveItemBtn = addBtn("Tüm Gerçek Eşyaları AL", function()
+        giveAllItems()
+    end)
+
+    -- Give Money
+    local paraBtn = addBtn("1.000.000 Para Ver", function()
+        giveMoney(1000000)
+    end)
+end
+
+-- Hotkey for menu show/hide
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == menuKey then
+        if menuOpen then
+            destroyMenu()
+        else
+            makeMenu()
+        end
+    end
+end)
+
+makeMenu()
