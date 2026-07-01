@@ -39,34 +39,15 @@ local function serverHop()
 
     local bestServer = getBestServer()
     if bestServer then
-        notify("Daha boş bir sunucuya atlanıyor...")
+        if notify then notify("Daha boş bir sunucuya atlanıyor...") end
         wait(1)
         TeleportService:TeleportToPlaceInstance(PlaceId, bestServer.id, game.Players.LocalPlayer)
     else
-        notify("Uygun sunucu bulunamadı.")
+        if notify then notify("Uygun sunucu bulunamadı.") end
     end
 end
 
--- Menüye Server Hop Tuşu Eklenmesi (Menünün hiçbir fonksiyonu bozulmadan!)
-if _G.visitingmenu and _G.visitingmenu:IsA("ScreenGui") then
-    pcall(function()
-        if not _G.visitingmenu:FindFirstChild("ServerHopButton") then
-            local btn = Instance.new("TextButton")
-            btn.Name = "ServerHopButton"
-            btn.Size = UDim2.new(0,175,0,40)
-            btn.Position = UDim2.new(0,10,0,(_G.visitingmenu.AbsoluteSize.Y or 350)-50)
-            btn.BackgroundColor3 = Color3.fromRGB(50, 120, 210)
-            btn.TextColor3 = Color3.fromRGB(255,255,255)
-            btn.Font = Enum.Font.GothamBold
-            btn.TextSize = 18
-            btn.Text = "Server Hop"
-            btn.AnchorPoint = Vector2.new(0,1)
-            btn.BorderSizePixel = 0
-            btn.Parent = _G.visitingmenu
-            btn.MouseButton1Click:Connect(serverHop)
-        end
-    end)
-end
+_G.SERVER_HOP = serverHop
 Blox Fruits Pro GUI Script (v2)
 • FLY (Kendi kontrolünle özgürce hareket! WASD yukarı/ileri, Mouse yön verir, Space zıplatır.)
 • NOCLIP (bina/duvardan kolay geçiş)
