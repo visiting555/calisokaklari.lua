@@ -1,8 +1,8 @@
 --[[
-Blox Fruits Script v3.1
+Blox Fruits Script v3.2
 - Menü başlığı "visitingmenu"
 - Fly, Noclip, meyve seç/Tp/ESP
-- Meyve listesi her zaman dolu ve güncel! 
+- Meyve seç kısmı tamamen DOLU: isimler %100 görünür!
 ]]
 
 -- SERVİSLER ve DEĞİŞKENLER
@@ -45,7 +45,7 @@ local function getFruitsOnMap()
     end
     -- Statik meyveleri ekle (listede yoksa)
     for _,fruit in ipairs(knownFruits()) do
-        if not already[fruit] then table.insert(found, fruit) already[fruit] = true end
+        if not already[fruit] then table.insert(found, fruit) already[n] = true end
     end
     table.sort(found)
     return found
@@ -77,6 +77,15 @@ local function robustParent(gui)
     end
 end
 
+-- ScrollList function (KESİN GÖRÜNÜR!) --
+local function clearChildren(gui)
+    for _,c in ipairs(gui:GetChildren()) do
+        if not c:IsA("UIListLayout") then
+            pcall(function() c:Destroy() end)
+        end
+    end
+end
+
 -- GUI OLUŞTURMA (Her zaman açılır/fallback ile)
 local function createMenu()
     if menuGui then pcall(function() menuGui:Destroy() end) end
@@ -95,7 +104,7 @@ local function createMenu()
 
     -- Menü frame
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 415, 0, 480)
+    frame.Size = UDim2.new(0, 415, 0, 495)
     frame.Position = UDim2.new(0, 60, 0, 80)
     frame.BackgroundColor3 = Color3.fromRGB(25,28,38)
     frame.BorderSizePixel = 0
@@ -156,11 +165,16 @@ local function createMenu()
 
     -- MEYVE LİSTESİ HER ZAMAN VAR
     local dynamicFruits = getFruitsOnMap()
+    if #dynamicFruits < 1 then
+        for _,fruit in ipairs(knownFruits()) do
+            table.insert(dynamicFruits, fruit)
+        end
+    end
 
     -- Meyve seçme:
     local fruitLbl = Instance.new("TextLabel")
     fruitLbl.Text = "Meyve Seç: "
-    fruitLbl.TextSize = 17
+    fruitLbl.TextSize = 18
     fruitLbl.TextColor3 = Color3.fromRGB(255,255,187)
     fruitLbl.BackgroundTransparency = 1
     fruitLbl.Size = UDim2.new(0,100,0,btnH)
@@ -168,6 +182,7 @@ local function createMenu()
     fruitLbl.Font = Enum.Font.GothamBold
     fruitLbl.Parent = frame
 
+    -- Dropdown base button
     local fruitDropdown = Instance.new("TextButton")
     fruitDropdown.Size = UDim2.new(0,220,0,btnH)
     fruitDropdown.Position = UDim2.new(0,98,0,y)
@@ -175,38 +190,57 @@ local function createMenu()
     fruitDropdown.Font = Enum.Font.Gotham
     fruitDropdown.TextColor3 = Color3.fromRGB(240,240,240)
     fruitDropdown.BackgroundColor3 = Color3.fromRGB(39,41,50)
+    fruitDropdown.BorderSizePixel = 0
     fruitDropdown.Parent = frame
+    fruitDropdown.ClipsDescendants = false
 
     local dropdownOpen = false
-    -- Yeni: LİSTE GÖRÜNÜR, HER ZAMAN YAZILI KISIM (Canvas!)
-    local fruitListFrame = Instance.new("ScrollingFrame")
+
+    -- Kesinlikle GÖRÜNÜR meyve listesi
+    local fruitListFrame = Instance.new("Frame")
     fruitListFrame.Parent = frame
-    fruitListFrame.Size = UDim2.new(0,220,0, math.min(#dynamicFruits,7)*32+2)
-    fruitListFrame.Position = fruitDropdown.Position + UDim2.new(0,0,0,btnH+2)
-    fruitListFrame.CanvasSize = UDim2.new(0,0,0,math.max(1,#dynamicFruits)*32)
     fruitListFrame.BackgroundColor3 = Color3.fromRGB(34,34,48)
-    fruitListFrame.Visible = false
-    fruitListFrame.ZIndex = 15
     fruitListFrame.BorderSizePixel = 0
-    fruitListFrame.ScrollBarThickness = 6
+    fruitListFrame.Position = fruitDropdown.Position + UDim2.new(0,0,0,btnH+1)
+    fruitListFrame.Size = UDim2.new(0,220,0,math.min(#dynamicFruits,7)*32+2)
+    fruitListFrame.Visible = false
+    fruitListFrame.ZIndex = 10 + 1
 
-    -- ÖNCEKİ ÇOCUKLARI TEMİZLE
-    for _,child in ipairs(fruitListFrame:GetChildren()) do pcall(function() child:Destroy() end) end
+    -- ScrollingFrame & ListLayout KULLAN
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Parent = fruitListFrame
+    scroll.BackgroundTransparency = 1
+    scroll.Position = UDim2.new(0,0,0,0)
+    scroll.Size = UDim2.new(1,0,1,0)
+    scroll.CanvasSize = UDim2.new(0,0,0,#dynamicFruits*32)
+    scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 7
+    scroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+    scroll.ZIndex = fruitListFrame.ZIndex + 1
+    scroll.ClipsDescendants = true
 
+    local layout = Instance.new("UIListLayout", scroll)
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.Padding = UDim.new(0,0)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- Önceki butonları temizle:
+    clearChildren(scroll)
+
+    -- GÖRÜNÜR isimli dropdown içeriği
     for i,fruit in ipairs(dynamicFruits) do
         local fbtn = Instance.new("TextButton")
         fbtn.Size = UDim2.new(1,0,0,32)
-        fbtn.Position = UDim2.new(0, 0, 0, (i-1)*32)
         fbtn.Font = Enum.Font.Gotham
         fbtn.Text = fruit
-        fbtn.TextSize = 16
-        fbtn.BackgroundColor3 = Color3.fromRGB(55,55,60)
-        fbtn.TextColor3 = Color3.fromRGB(235,235,170)
-        fbtn.Name = "fruit_"..i
-        fbtn.Parent = fruitListFrame
+        fbtn.TextSize = 17
+        fbtn.BackgroundColor3 = Color3.fromRGB(43,43,54)
+        fbtn.TextColor3 = Color3.fromRGB(235,235,160)
+        fbtn.BorderSizePixel = 0
+        fbtn.Parent = scroll
+        fbtn.Name = "FruitDropdownBtn_"..i
+        fbtn.ZIndex = scroll.ZIndex + 1
         fbtn.AutoButtonColor = true
-        fbtn.Visible = true
-        fbtn.ZIndex = 16
         fbtn.MouseButton1Click:Connect(function()
             fruitEspSelection = fruit
             dropdownOpen = false
@@ -220,11 +254,12 @@ local function createMenu()
         fruitListFrame.Visible = dropdownOpen
     end)
 
-    -- Listeyi güncellediğimizde hem frame boyutu hem childlar hem canvas güncellenir
-    fruitListFrame.Size = UDim2.new(0,220,0,math.min(#dynamicFruits,7)*32+2)
-    fruitListFrame.CanvasSize = UDim2.new(0,0,0,#dynamicFruits*32)
-
-    y = y + btnH + (#dynamicFruits > 7 and 220 or 150)
+    -- Frame boyutunu ve Scroll ayarlarını güncelle
+    local fruitCountShow = math.min(#dynamicFruits,7)
+    fruitListFrame.Size = UDim2.new(0,220,0,fruitCountShow*32+2)
+    scroll.Size = UDim2.new(1,0,1,0)
+    scroll.CanvasSize = UDim2.new(0,0,0,#dynamicFruits*32)
+    y = y + btnH + padding + (dropdownOpen and fruitCountShow*32 or 0)
 
     -- ESP Butonu
     local fruitEspBtn = Instance.new("TextButton")
