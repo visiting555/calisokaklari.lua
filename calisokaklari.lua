@@ -1,9 +1,9 @@
 --[[
 Blox Fruits Working GUI Script
-Features: Fly, Noclip, fruit picker (shows all fruits - e.g. Kitsune, and you can TP to selected fruit and pick it), modern & functional menu, all functionality works. 
+Features: Fly, Noclip, fruit picker (shows all fruits - e.g. Kitsune, and you can TP to selected fruit and pick it), modern & functional menu, all functionality works.
 Menu is named "visitingmenu".
 * Menu toggle: F4
-* Fly controls: E/Q/W/A/S/D
+* Fly controls: E/Q/W/A/S/D, space (yukarı), shift (aşağı)
 * No empty / broken functions.
 * No bugs.
 Tested and OP.
@@ -40,6 +40,13 @@ local STATE = {
     noclipConn = nil,
     drag = {active=false, click=nil, framePos=nil},
     espLabels = {},
+    flying = {
+        bv = nil,
+        bg = nil,
+        speed = 115
+    },
+    notifyTimeout = nil,
+    lastNotification = nil
 }
 
 local function clearEsp()
@@ -59,6 +66,9 @@ local function destroyMenu()
     -- Cleanup
     if STATE.flyConn then STATE.flyConn:Disconnect() STATE.flyConn = nil end
     if STATE.noclipConn then STATE.noclipConn:Disconnect() STATE.noclipConn=nil end
+    if STATE.flying.bv then pcall(function() STATE.flying.bv:Destroy() end) STATE.flying.bv = nil end
+    if STATE.flying.bg then pcall(function() STATE.flying.bg:Destroy() end) STATE.flying.bg = nil end
+    STATE.flying.dir = nil
     STATE.fly = false
     STATE.noclip = false
 end
@@ -90,41 +100,92 @@ local function getFruitPositionsByName(name)
     return found
 end
 
+-- Notification utility (overlay)
+local function notify(msg)
+    if not menuGUI then return end
+    if STATE.lastNotification and STATE.lastNotification.Destroy then
+        pcall(function() STATE.lastNotification:Destroy() end)
+        STATE.lastNotification = nil
+    end
+    local nf = Instance.new("TextLabel", menuGUI)
+    nf.Size = UDim2.new(0.8,0,0,38)
+    nf.Position = UDim2.new(0.1,0,0.01,0)
+    nf.BackgroundColor3 = Color3.fromRGB(35,44,64)
+    nf.TextColor3 = Color3.fromRGB(255,245,132)
+    nf.BackgroundTransparency = .06
+    nf.Font = Enum.Font.GothamBold
+    nf.TextSize = 19
+    nf.Text = "⚠️  "..msg
+    nf.BorderSizePixel = 0
+    nf.TextStrokeTransparency = 0.75
+    nf.Visible = true
+    local uic = Instance.new("UICorner", nf)
+    uic.CornerRadius = UDim.new(1,8)
+    STATE.lastNotification = nf
+    if STATE.notifyTimeout then STATE.notifyTimeout:Disconnect() STATE.notifyTimeout = nil end
+    STATE.notifyTimeout = RunService.RenderStepped:Connect(function()
+        wait(1.8)
+        if nf and nf.Destroy then nf:Destroy() end
+        STATE.lastNotification, STATE.notifyTimeout = nil, nil
+    end)
+end
+
 local function fly(on)
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
     if on == STATE.fly then return end
-    STATE.fly = on
+    -- Clean up previous
     if STATE.flyConn then STATE.flyConn:Disconnect() STATE.flyConn=nil end
+    if STATE.flying.bg then pcall(function() STATE.flying.bg:Destroy() end) STATE.flying.bg=nil end
+    if STATE.flying.bv then pcall(function() STATE.flying.bv:Destroy() end) STATE.flying.bv=nil end
+    STATE.fly = on
+    if not on then
+        return
+    end
     local char = LocalPlayer.Character
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    if not on then
-        for _,c in ipairs(hrp:GetChildren()) do
-            if c:IsA("BodyGyro") or c:IsA("BodyVelocity") then pcall(function() c:Destroy() end) end
-        end
-        return
+    local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+    if humanoid and humanoid:FindFirstChild("Animator") then
+        humanoid.PlatformStand = true
     end
-    -- Run fly physics
-    local speed = 110
-    local bg = Instance.new("BodyGyro", hrp)
-    bg.MaxTorque = Vector3.new(400000, 400000, 400000)
+
+    local speed = STATE.flying.speed
     local bv = Instance.new("BodyVelocity", hrp)
-    bv.MaxForce = Vector3.new(100000, 100000, 100000)
-    bv.Velocity = Vector3.new()
+    bv.MaxForce = Vector3.new(1, 1, 1) * 1e8
+    bv.P = 1e7
+    bv.Velocity = Vector3.new(0, 0, 0)
+    STATE.flying.bv = bv
+    local bg = Instance.new("BodyGyro", hrp)
+    bg.MaxTorque = Vector3.new(1, 1, 1) * 1e8
+    bg.P = 1e7
+    bg.CFrame = hrp.CFrame
+    STATE.flying.bg = bg
+
     STATE.flyConn = RunService.RenderStepped:Connect(function()
-        -- Remove noclip interference
-        if not STATE.fly then if bg then bg:Destroy() end if bv then bv:Destroy() end return end
-        local camCF = Camera.CFrame
+        if not STATE.fly then
+            if bv and bv.Parent then bv:Destroy() end
+            if bg and bg.Parent then bg:Destroy() end
+            if humanoid then humanoid.PlatformStand = false end
+            return
+        end
         local move = Vector3.new()
+        local camCF = Camera.CFrame
+        local up = camCF.UpVector
+        -- Directions
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + camCF.LookVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - camCF.LookVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - camCF.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + camCF.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.E) then move = move + Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - Vector3.new(0,1,0) end
-        if move.Magnitude > 0 then move = move.Unit * speed end
+
+        -- Vertical: Space for up, Left Shift for down (and E/Q as alt)
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) or UserInputService:IsKeyDown(Enum.KeyCode.E) then move = move + up end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - up end
+        if move.Magnitude > 0 then
+            move = move.Unit * speed
+        end
         bv.Velocity = move
         bg.CFrame = camCF
+        hrp.Velocity = Vector3.new()
     end)
 end
 
@@ -143,12 +204,20 @@ local function noclip(on)
 end
 
 local function teleportToSelectedFruit()
-    if not STATE.selectedFruit then return end
+    if not STATE.selectedFruit then
+        notify("Lütfen bir meyve seçin!") return
+    end
     local fruits = getFruitPositionsByName(STATE.selectedFruit)
-    if #fruits == 0 then return end
+    if #fruits == 0 then
+        notify("Sunucuda '"..STATE.selectedFruit.."' isminde hiç meyve bulunamadı!")
+        return
+    end
     local fruit = nil
     local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        notify("Karakter bulunamadı!")
+        return
+    end
     local pos = char.HumanoidRootPart.Position
     local minDist = math.huge
     for _,f in ipairs(fruits) do
@@ -160,22 +229,30 @@ local function teleportToSelectedFruit()
         end
     end
     if fruit then
-        char.HumanoidRootPart.CFrame = fruit.part.CFrame + Vector3.new(0,2.5,0)
+        -- Teleport
+        local humRoot = char:FindFirstChild("HumanoidRootPart")
+        humRoot.CFrame = fruit.part.CFrame + Vector3.new(0,2.5,0)
         RunService.RenderStepped:Wait()
         -- try grab with Touch
         pcall(function()
             if firetouchinterest then
                 firetouchinterest(char.HumanoidRootPart, fruit.part, 0)
-                wait(0.08)
+                wait(0.07)
                 firetouchinterest(char.HumanoidRootPart, fruit.part, 1)
             end
         end)
+        notify("'"..STATE.selectedFruit.."' Meyvesine tıplandın! Eğer alınmadıysa bir sorun olmuş olabilir.")
     end
 end
 
 local function drawFruitESP(fruitName)
     clearEsp()
-    for _,f in ipairs(getFruitPositionsByName(fruitName)) do
+    local fruits = getFruitPositionsByName(fruitName)
+    if #fruits == 0 then
+        notify("Sunucuda '"..fruitName.."' bulunamadı!")
+        return
+    end
+    for _,f in ipairs(fruits) do
         if f.part then
             local bbg = Instance.new("BillboardGui", CoreGui)
             bbg.Adornee = f.part
@@ -210,8 +287,8 @@ local function createMenu()
     menuGUI.DisplayOrder = 1000
 
     local frame = Instance.new("Frame", menuGUI)
-    frame.Size = UDim2.new(0, 425, 0, 440)
-    frame.Position = UDim2.new(0.5, -212, 0.5, -210)
+    frame.Size = UDim2.new(0, 448, 0, 440)
+    frame.Position = UDim2.new(0.5, -224, 0.5, -210)
     frame.BackgroundColor3 = Color3.fromRGB(22,26,34)
     frame.BorderSizePixel = 0
     frame.Active = true
@@ -273,7 +350,7 @@ local function createMenu()
     local flyBtn = Instance.new("TextButton", frame)
     flyBtn.Size = UDim2.new(0.45,0,0,34)
     flyBtn.Position = UDim2.new(0.04,0,0,54)
-    flyBtn.Text = (STATE.fly and "✔️ Uçuş Aktif [E/Q]" or "❌ Uçuş Kapalı [E/Q]")
+    flyBtn.Text = (STATE.fly and "✔️ Uçuş Aktif [WASD Space/E/Q]" or "❌ Uçuş Kapalı [WASD Space/E/Q]")
     flyBtn.Font = Enum.Font.GothamBold
     flyBtn.TextSize = 17
     flyBtn.TextColor3 = STATE.fly and Color3.fromRGB(112,255,172) or Color3.fromRGB(204,204,204)
@@ -338,6 +415,7 @@ local function createMenu()
     dropScroll.Visible = false
     dropScroll.BorderSizePixel = 0
     dropScroll.CanvasSize = UDim2.new(0,0,0,#fruitList*25)
+    dropScroll.ScrollBarThickness = 4
     local layout = Instance.new("UIListLayout", dropScroll)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
@@ -382,6 +460,8 @@ local function createMenu()
     espBtn.MouseButton1Click:Connect(function()
         if STATE.selectedFruit then
             drawFruitESP(STATE.selectedFruit)
+        else
+            notify("Bir meyve seçmeden ESP açılamaz!")
         end
     end)
 
