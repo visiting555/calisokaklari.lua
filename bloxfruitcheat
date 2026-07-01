@@ -2,8 +2,7 @@
 efsane olmuş süper sakın hiçbirşeyi bozma herşey olduğu gibi kalsın yine sunucuda olan meyve +1 olarak gözüksün ve sunucuya server hopping mantığı ekle hiçbirşeyi bozma menüde birde server hop tuşu olucak bu tuşa basınca bulunduğun sunucudan çıkıp başka kişi sayısı az olan sunuculara atıcak sakın hiçbirşeyi bozma sadece bu mantığı ekle
 ]]
 
--- SERVER HOPPING MANTIĞI EKLENDİ, HİÇBİRŞEY BOZULMADI
-
+-- SERVER HOPPING MANTIĞI EKLE - HOTKEY KISMININ HEMEN ÜSTÜNE EKLENMELİ (Kodun en tepesine DEĞİL)
 local function serverHop()
     local HttpService = game:GetService("HttpService")
     local TeleportService = game:GetService("TeleportService")
