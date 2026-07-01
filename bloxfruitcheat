@@ -516,7 +516,6 @@ addBtn("Yeni Sunucuya Geç (Server Hop)", function()
         end
     end
 end)
-
 -- MENU Hotkey
 UserInputService.InputBegan:Connect(function(input,gp)
     if gp then return end
