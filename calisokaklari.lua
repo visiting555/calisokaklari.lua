@@ -3,11 +3,9 @@ local LocalPlayer = Players.LocalPlayer
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local StarterGui = game:GetService("StarterGui")
 local CoreGui = game:GetService("CoreGui")
 
 local uniqueKey = "CaliMenu_"..tostring(math.random(100000, 999999))
-local menuKey = Enum.KeyCode.RightControl
 local cheats = {ESP=false,Aimbot=false}
 local menuUI = nil
 local open = false
@@ -16,7 +14,7 @@ local espConnections = {}
 
 function destroyMenu()
     if menuUI then
-        menuUI:Destroy()
+        pcall(function() menuUI:Destroy() end)
     end
     menuUI = nil
     open = false
@@ -60,11 +58,11 @@ end
 
 function clearESP()
     for _,v in ipairs(espHandles) do
-        if v and v.Parent then v:Destroy() end
+        if v and v.Parent then pcall(function() v:Destroy() end) end
     end
     espHandles = {}
     for _,v in ipairs(espConnections) do
-        if v then v:Disconnect() end
+        pcall(function() if v then v:Disconnect() end end)
     end
     espConnections = {}
 end
@@ -82,10 +80,10 @@ function espPlayer(plr)
     box.Parent = Workspace.CurrentCamera
     table.insert(espHandles, box)
     local c1 = plr.CharacterRemoving:Connect(function()
-        if box.Parent then box:Destroy() end
+        if box.Parent then pcall(function() box:Destroy() end) end
     end)
     local c2 = plr.CharacterAdded:Connect(function()
-        wait(0.4)
+        wait(0.5)
         espPlayer(plr)
     end)
     table.insert(espConnections, c1)
@@ -96,8 +94,8 @@ function setESP(state)
     cheats.ESP = state
     clearESP()
     if state then
-        for _,plr in ipairs(Players:GetPlayers()) do espPlayer(plr) end
-        local conn = Players.PlayerAdded:Connect(function(plr) espPlayer(plr) end)
+        for _,plr in ipairs(Players:GetPlayers()) do pcall(function() espPlayer(plr) end) end
+        local conn = Players.PlayerAdded:Connect(function(plr) pcall(function() espPlayer(plr) end) end)
         table.insert(espConnections, conn)
     end
 end
@@ -105,11 +103,11 @@ end
 local aimbotConn
 function setAimbot(state)
     cheats.Aimbot = state
-    if aimbotConn then aimbotConn:Disconnect() end
+    if aimbotConn then pcall(function() aimbotConn:Disconnect() end) end
     if state then
         aimbotConn = RunService.RenderStepped:Connect(function()
             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-                local closest
+                local closest=nil
                 local cam = Workspace.CurrentCamera
                 local shortest=math.huge
                 for _,plr in ipairs(Players:GetPlayers()) do
@@ -117,7 +115,7 @@ function setAimbot(state)
                         local pos,vis = cam:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
                         if vis then
                             local mouse = UserInputService:GetMouseLocation()
-                            local dist=(Vector2.new(pos.X,pos.Y)-Vector2.new(mouse.X,mouse.Y)).Magnitude
+                            local dist = (Vector2.new(pos.X,pos.Y)-Vector2.new(mouse.X,mouse.Y)).Magnitude
                             if dist<shortest then
                                 shortest=dist
                                 closest=plr
@@ -136,7 +134,7 @@ end
 function killAll()
     local remotes = {}
     for _,v in ipairs(Workspace:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("damage") or v.Name:lower():find("shoot")) then
+        if v:IsA("RemoteEvent") and (v.Name:lower():find("damage") or v.Name:lower():find("shoot") or v.Name:lower():find("kill")) then
             table.insert(remotes,v)
         end
     end
@@ -156,7 +154,7 @@ function giveAllItems()
     local added=0
     local remotes = {}
     for _,obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("item") or obj.Name:lower():find("give")) then
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("item") or obj.Name:lower():find("give") or obj.Name:lower():find("reward")) then
             table.insert(remotes,obj)
         end
     end
@@ -173,7 +171,7 @@ end
 function giveMoney(amount)
     local succ=false
     for _,obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("money") or obj.Name:lower():find("cash")) then
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("money") or obj.Name:lower():find("cash") or obj.Name:lower():find("bank")) then
             pcall(function()
                 obj:FireServer(amount)
                 succ=true
@@ -184,19 +182,42 @@ function giveMoney(amount)
     return succ
 end
 
+function waitForGuiParent()
+    for i=1,100 do
+        if syn and syn.protect_gui then break end
+        local guiParent = nil
+        pcall(function()
+            if CoreGui then guiParent = CoreGui end
+        end)
+        if guiParent then return guiParent end
+        wait(0.05)
+    end
+    return LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+end
+
 function makeMenu()
     destroyMenu()
     open = true
     menuUI = Instance.new("ScreenGui")
     menuUI.Name = uniqueKey
     menuUI.ResetOnSpawn=false
-    if syn and syn.protect_gui then
-        syn.protect_gui(menuUI)
-        menuUI.Parent = CoreGui
-    else
-        pcall(function() menuUI.Parent=CoreGui end)
-        if not menuUI.Parent then
-            menuUI.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer.PlayerGui
+
+    local success = false
+    pcall(function()
+        if syn and syn.protect_gui then
+            syn.protect_gui(menuUI)
+            menuUI.Parent = CoreGui
+            success = true
+        end
+    end)
+    if not success then
+        local passed = false
+        pcall(function()
+            menuUI.Parent = CoreGui
+            passed = (menuUI.Parent == CoreGui)
+        end)
+        if not passed then
+            menuUI.Parent = waitForGuiParent()
         end
     end
 
@@ -268,8 +289,16 @@ function makeMenu()
     end)
 end
 
+local function allowFirstMenu()
+    for i=1,10 do
+        makeMenu()
+        wait(0.13)
+        if menuUI and menuUI.Parent and menuUI.Parent:IsA("ScreenGui")==false then break end
+    end
+end
+
 UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.KeyCode == menuKey then
+    if not processed and (input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.F4) then
         if open then
             destroyMenu()
         else
@@ -278,4 +307,4 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
-makeMenu()
+allowFirstMenu()
